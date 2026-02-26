@@ -1,0 +1,2 @@
+# mybot
+My discord bot
