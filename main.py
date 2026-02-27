@@ -9,17 +9,15 @@ TOKEN = os.getenv('BOT_TOKEN')
 
 class MyBot(commands.Bot):
     def __init__(self):
-    intents = discord.Intents.default()
-    intents.message_content = True
+        intents = discord.Intents.default()
+        intents.message_content = True
 
-    super().__init__(command_prefix='!', intents=intents, help_command=None)
+        super().__init__(command_prefix='!', intents=intents, help_command=None)
 
-
-
-async def on_ready(self):
-    print(f'Logged in as {self.user} (ID: {self.user.id})')
-    print('------')
-    await self.tree.sync()
+    async def on_ready(self):
+        print(f'Logged in as {self.user} (ID: {self.user.id})')
+        print('------')
+        await self.tree.sync()
 
 bot = MyBot()
 
