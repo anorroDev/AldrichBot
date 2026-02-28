@@ -16,7 +16,11 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self):
         await self.load_extension('cogs.general')
+        await self.load_extension('cogs.moderation')
+        await self.load_extension('cogs.ui_elements')
         print('Cogs General loaded successfully.')
+        print('Cogs Moderation loaded successfully.')
+        print('Cogs UI Elements loaded successfully.')
 
         await self.tree.sync()
         print('Slash commands synced successfully.')
