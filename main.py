@@ -14,6 +14,14 @@ class MyBot(commands.Bot):
 
         super().__init__(command_prefix='!', intents=intents, help_command=None)
 
+    async def setup_hook(self):
+        await self.load_extension('cogs.general')
+        print('Cogs General loaded successfully.')
+
+        await self.tree.sync()
+        print('Slash commands synced successfully.')
+
+
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
         print('------')
