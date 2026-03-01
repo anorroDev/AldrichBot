@@ -32,5 +32,41 @@ class Economy(commands.Cog):
         print(f"[ОШИБКА В БАЛАНСЕ]: {error}") 
         
         await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
+
+    @app_commands.command(name="leaderboard", description="Показать топ-10 самых богатых пользователей сервера")
+    async def leaderboard(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+
+        async with self.bot.db.execute("SELECT id, balance FROM users ORDER BY balance DESC LIMIT 10") as cursor:
+            rows = await cursor.fetchall()
+
+        if not rows:
+            await interaction.followup.send("Ошибка базы данных или нет данных для отображения таблицы лидеров.")
+            return
+
+        embed = discord.Embed(
+            title="🏆 Таблица лидеров (Топ-10)",
+            description="Самые богатые участники:\n\n",
+            color=discord.Color.gold() # Делаем полоску золотой!
+        )
+
+        for index, row in enumerate(rows, start=1):
+            user_id = row[0]
+            balance = row[1]
+            
+            if index == 1:
+                medal = "🥇"
+            elif index == 2:
+                medal = "🥈"
+            elif index == 3:
+                medal = "🥉"
+            else:
+                medal = f"**{index}.**"
+            
+            # <@{user_id}> - превратит ID в имя (упоминание) пользователя
+            embed.description += f"{medal} <@{user_id}> — `{balance}` монет\n"
+
+        await interaction.followup.send(embed=embed)
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Economy(bot))
