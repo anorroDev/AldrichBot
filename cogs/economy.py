@@ -24,12 +24,13 @@ class Economy(commands.Cog):
         async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (target.id,)) as cursor:
             row = await cursor.fetchone()
         user_balance = row[0] if row else 0
-        
+
         await interaction.response.send_message(f"💰 Баланс пользователя **{target.display_name}**: `{user_balance}` монет")
 
     @balance.error
     async def balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
-        await interaction.response.send_message("Произошла ошибка при выполнении команды /balance. Убедитесь, что указали существующего пользователя.", ephemeral=True)
-
+        print(f"[ОШИБКА В БАЛАНСЕ]: {error}") 
+        
+        await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Economy(bot))

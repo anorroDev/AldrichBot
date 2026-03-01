@@ -26,11 +26,12 @@ class MyBot(commands.Bot):
         
         # Инициализация базы данных
         self.db = await aiosqlite.connect('mybot.db')
-
-        # Создание таблицы для хранения данных пользователей
+        
+        # Создание таблиц
+        await self.db.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, balance INTEGER)")
         await self.db.execute("CREATE TABLE IF NOT EXISTS user_data (user_id INTEGER PRIMARY KEY, data TEXT)")
         await self.db.commit()
-        print('Database connected and user_data table ensured.')
+        print('Database connected and tables ensured.')
 
 
         await self.tree.sync()
