@@ -44,6 +44,43 @@ class UIElements(commands.Cog):
     async def menu_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         await interaction.response.send_message(f"❌ Произошла ошибка: {error}", ephemeral=True)
 
-        
+    @app_commands.command(name="verify", description="Показать кнопку для верификации")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def verify(self, interaction: discord.Interaction) -> None:
+        view = VerifyView()
+        text = "Нажмите кнопку ниже, чтобы пройти верификацию и получить доступ к остальным каналам сервера."
+
+        await interaction.response.send_message(text, view=view)
+
+    @verify.error
+    async def verify_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("❌ Эта команда доступна только администраторам!", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ Произошла ошибка: {error}", ephemeral=True)    
+
+class VerifyView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='Подтвердить', style=discord.ButtonStyle.success, emoji="✅",custom_id='verify_btn') 
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        role_id = 1477632896431947866
+        role = interaction.guild.get_role(role_id)
+
+        if not role:
+            await interaction.response.send_message("❌ Ошибка: роль для верификации не найдена на сервере. Обратитесь к администратору.", ephemeral=True)
+            return
+        if role in interaction.user.roles:
+            await interaction.response.send_message("⚠️ Вы уже прошли верификацию!", ephemeral=True)
+        else:
+            try:
+                await interaction.user.add_roles(role)
+                await interaction.response.send_message("✅ Верификация успешна! Вам была выдана роль.", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.response.send_message("❌ Упс! У меня нет прав выдавать эту роль. Проверь настройки сервера!", ephemeral=True)
+                    
+
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(UIElements(bot))

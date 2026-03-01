@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import asyncio
+import aiosqlite
 
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
@@ -12,19 +13,35 @@ class MyBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
 
-        super().__init__(command_prefix='!', intents=intents, help_command=None)
+        super().__init__(command_prefix='#', intents=intents, help_command=None)
+        self.db = None
 
     async def setup_hook(self):
+        # Загрузка когов
         await self.load_extension('cogs.general')
         await self.load_extension('cogs.moderation')
         await self.load_extension('cogs.ui_elements')
-        print('Cogs General loaded successfully.')
-        print('Cogs Moderation loaded successfully.')
-        print('Cogs UI Elements loaded successfully.')
+        await self.load_extension('cogs.economy')
+        print('Cogs loaded successfully.')
+        
+        # Инициализация базы данных
+        self.db = await aiosqlite.connect('mybot.db')
+
+        # Создание таблицы для хранения данных пользователей
+        await self.db.execute("CREATE TABLE IF NOT EXISTS user_data (user_id INTEGER PRIMARY KEY, data TEXT)")
+        await self.db.commit()
+        print('Database connected and user_data table ensured.')
+
 
         await self.tree.sync()
         print('Slash commands synced successfully.')
 
+    # Закрытие базы данных
+    async def close(self):
+        if self.db:
+            await self.db.close()
+            print('Database connection closed.')
+        await super().close()
 
     async def on_ready(self):
         print(f'Logged in as {self.user} (ID: {self.user.id})')
