@@ -68,5 +68,58 @@ class Economy(commands.Cog):
 
         await interaction.followup.send(embed=embed)
 
+    @leaderboard.error
+    async def leaderboard_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+        print(f"[ОШИБКА В ЛИДЕРБОРДЕ]: {error}") 
+        
+        await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
+
+
+    @app_commands.command(name="change_balance", description="Изменить баланс пользователя")
+    @app_commands.checks.has_permissions(administrator=True) 
+    @app_commands.describe(
+        action="Что сделать с балансом?", 
+        member="Выберите пользователя", 
+        amount="Укажите сумму"
+    )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="✏️ Установить (Set)", value="set"),
+        app_commands.Choice(name="➕ Добавить (Add)", value="add"),
+        app_commands.Choice(name="➖ Отнять (Remove)", value="remove")
+    ])
+    async def change_balance(self, interaction: discord.Interaction, action: app_commands.Choice[str], member: discord.Member, amount: int) -> None:
+        
+        async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (member.id,)) as cursor:
+            row = await cursor.fetchone()
+        
+        current_balance = row[0] if row else 0 
+        
+        if action.value == "set":
+            new_balance = amount
+            action_text = "установлен на"
+        elif action.value == "add":
+            new_balance = current_balance + amount
+            action_text = "пополнен на"
+        elif action.value == "remove":
+            new_balance = current_balance - amount
+            action_text = "уменьшен на"
+            # Защита от отрицательного баланса 
+            # if new_balance < 0:
+            #    new_balance = 0 
+                
+        query = "INSERT INTO users (id, balance) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET balance = ?"
+        await self.bot.db.execute(query, (member.id, new_balance, new_balance))
+        await self.bot.db.commit()
+
+        await interaction.response.send_message(f"💰 Баланс **{member.display_name}** {action_text} `{amount}` монет. \n🏦 Текущий счет: `{new_balance}`", ephemeral=True)
+
+    @change_balance.error
+    async def change_balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("❌ Эта команда доступна только администраторам!", ephemeral=True)
+        else:
+            print(f"[ОШИБКА В ИЗМЕНЕНИИ БАЛАНСА]: {error}") 
+            await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Economy(bot))
