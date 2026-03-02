@@ -47,7 +47,7 @@ class Economy(commands.Cog):
         embed = discord.Embed(
             title="🏆 Таблица лидеров (Топ-10)",
             description="Самые богатые участники:\n\n",
-            color=discord.Color.gold() # Делаем полоску золотой!
+            color=discord.Color.gold()
         )
 
         for index, row in enumerate(rows, start=1):
