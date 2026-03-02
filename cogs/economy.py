@@ -25,7 +25,7 @@ class Economy(commands.Cog):
             row = await cursor.fetchone()
         user_balance = row[0] if row else 0
 
-        await interaction.response.send_message(f"💰 Баланс пользователя **{target.display_name}**: `{user_balance}` монет")
+        await interaction.response.send_message(f"💰 Баланс пользователя **{target.display_name}**: `{user_balance}` душ")
 
     @balance.error
     async def balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
@@ -64,7 +64,7 @@ class Economy(commands.Cog):
                 medal = f"**{index}.**"
             
             # <@{user_id}> - превратит ID в имя (упоминание) пользователя
-            embed.description += f"{medal} <@{user_id}> — `{balance}` монет\n"
+            embed.description += f"{medal} <@{user_id}> — `{balance}` душ\n"
 
         await interaction.followup.send(embed=embed)
 
@@ -111,7 +111,7 @@ class Economy(commands.Cog):
         await self.bot.db.execute(query, (member.id, new_balance, new_balance))
         await self.bot.db.commit()
 
-        await interaction.response.send_message(f"💰 Баланс **{member.display_name}** {action_text} `{amount}` монет. \n🏦 Текущий счет: `{new_balance}`", ephemeral=True)
+        await interaction.response.send_message(f"💰 Баланс **{member.display_name}** {action_text} `{amount}` душ. \n🏦 Текущий счет: `{new_balance}`", ephemeral=True)
 
     @change_balance.error
     async def change_balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
