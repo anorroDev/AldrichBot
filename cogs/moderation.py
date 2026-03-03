@@ -30,7 +30,7 @@ class Moderation(commands.Cog):
             return
         duration = timedelta(minutes=minutes)
         await member.timeout(duration, reason=reason)
-        await interaction.response.send_message(f"🔇 Пользователь **{member.display_name}** был заглушен. Причина: `{reason}`")
+        await interaction.response.send_message(f"🔇 Пользователь **{member.display_name}** был заглушен на {minutes} минут. Причина: `{reason}`")
 
     #kick command
     @app_commands.command(name="kick", description="Кикнуть участника с сервера.")
@@ -56,7 +56,8 @@ class Moderation(commands.Cog):
             return
 
         await member.ban(reason=reason)
-        await interaction.response.send_message(f"🔨 Пользователь **{member.display_name}** был забанен. Причина: `{reason}`")
+        await interaction.response.send_message(f"🔨 Пользователь **{member.display_name}** был забанен на. Причина: `{reason}`")
+    
     #error handler for all commands in this cog
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         if isinstance(error, app_commands.MissingPermissions):
