@@ -7,15 +7,6 @@ class Economy(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message) -> None:
-        if message.author.bot:
-            return
-
-        query = "INSERT INTO users (id, balance) VALUES (?, 1) ON CONFLICT(id) DO UPDATE SET balance = balance + 1"
-        await self.bot.db.execute(query, (message.author.id,))
-        await self.bot.db.commit()
-
     @app_commands.command(name="balance", description="Показать баланс пользователя")
     @app_commands.describe(member="Выберите пользователя или оставьте пустым для отображения вашего баланса")
 
