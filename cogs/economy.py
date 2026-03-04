@@ -110,6 +110,38 @@ class Economy(commands.Cog):
 
         await interaction.response.send_message(f"👻 Ты забрал `{amount}` душ из тайника.")
 
+    # ---------------------------------------------- Заработок ----------------------------------------------
+    @app_commands.command(name="farm", description="Отправиться на охоту за душами. ОСТОРОЖНО: Можно потерять всё!")
+    @app_commands.checks.cooldown(1, 3600, key=lambda i: i.user.id) # 1 раз в 3600 секунд
+    async def farm(self, interaction: discord.Interaction) -> None:
+        
+        chance = random.randint(1, 100)
+        
+        if chance <= 15:
+            await self.bot.db.execute("UPDATE users SET balance = 0 WHERE id = ?", (interaction.user.id,))
+            await self.bot.db.commit()
+            
+            embed = discord.Embed(title="☠️ ВЫ ПОГИБЛИ!", description="Тьма поглотила вас на охоте. **Вы потеряли все души**, которые были при вас!", color=discord.Color.red())
+            embed.set_footer(text="Надеюсь, вы успели что-то оставить в тайнике...")
+            await interaction.response.send_message(embed=embed)
+        
+        else:
+            reward = random.randint(20, 70) 
+            
+            query = "INSERT INTO users (id, balance, bank) VALUES (?, ?, 0) ON CONFLICT(id) DO UPDATE SET balance = balance + ?"
+            await self.bot.db.execute(query, (interaction.user.id, reward, reward))
+            await self.bot.db.commit()
+            
+            await interaction.response.send_message(f"⚔️ Охота прошла успешно! Вы поглотили `{reward}` душ.\n*Не забудьте спрятать их в тайник (`/deposit`), пока вас не убили!*")
+
+    @farm.error
+    async def farm_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+        if isinstance(error, app_commands.CommandOnCooldown):
+            minutes_left = int(error.retry_after // 60)
+            await interaction.response.send_message(f"⏳ Твои силы иссякли. Следующая охота будет доступна через `{minutes_left}` минут.", ephemeral=True)
+        else:
+            print(f"Ошибка в фарме: {error}")
+
     # ---------------------------------------------- Административные команды ----------------------------------------------
     @app_commands.command(name="change_balance", description="Изменить баланс пользователя")
     @app_commands.checks.has_permissions(administrator=True) 
