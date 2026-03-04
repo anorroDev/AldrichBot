@@ -111,20 +111,34 @@ class Economy(commands.Cog):
         await interaction.response.send_message(f"👻 Ты забрал `{amount}` душ из тайника.")
 
     # ---------------------------------------------- Заработок ----------------------------------------------
+    def get_farm_cooldown(interaction: discord.Interaction):
+        if not isinstance(interaction.user, discord.Member):
+            return app_commands.Cooldown(1, 3600)
+
+        role_ids = [role.id for role in interaction.user.roles]
+
+        if 1446126804908638348 in role_ids:
+            return None
+
+        return app_commands.Cooldown(1, 3600)
+
+
     @app_commands.command(name="farm", description="Отправиться на охоту за душами. ОСТОРОЖНО: Можно потерять всё!")
-    @app_commands.checks.cooldown(1, 3600, key=lambda i: i.user.id) # 1 раз в 3600 секунд
+    @app_commands.checks.dynamic_cooldown(get_farm_cooldown, key=lambda i: i.user.id)
     async def farm(self, interaction: discord.Interaction) -> None:
-        
         chance = random.randint(1, 100)
         
         if chance <= 15:
             await self.bot.db.execute("UPDATE users SET balance = 0 WHERE id = ?", (interaction.user.id,))
             await self.bot.db.commit()
             
-            embed = discord.Embed(title="☠️ ВЫ ПОГИБЛИ!", description="Тьма поглотила вас на охоте. **Вы потеряли все души**, которые были при вас!", color=discord.Color.red())
-            embed.set_footer(text="Надеюсь, вы успели что-то оставить в тайнике...")
+            embed = discord.Embed(
+                title="☠️ ВЫ ПОГИБЛИ!", 
+                description="Тьма поглотила вас на охоте. **Вы потеряли все души**, которые были при вас!", 
+                color=discord.Color.red()
+            )
+            embed.set_footer(text="Надеюсь, вы успели спрятать часть в тайник...")
             await interaction.response.send_message(embed=embed)
-        
         else:
             reward = random.randint(20, 70) 
             
@@ -134,13 +148,19 @@ class Economy(commands.Cog):
             
             await interaction.response.send_message(f"⚔️ Охота прошла успешно! Вы поглотили `{reward}` душ.\n*Не забудьте спрятать их в тайник (`/deposit`), пока вас не убили!*")
 
+
     @farm.error
     async def farm_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         if isinstance(error, app_commands.CommandOnCooldown):
             minutes_left = int(error.retry_after // 60)
-            await interaction.response.send_message(f"⏳ Твои силы иссякли. Следующая охота будет доступна через `{minutes_left}` минут.", ephemeral=True)
+            seconds_left = int(error.retry_after % 60)
+            await interaction.response.send_message(
+                f"⏳ Твои силы иссякли. Следующая охота будет доступна через `{minutes_left} мин. {seconds_left} сек.`", 
+                ephemeral=True
+            )
         else:
             print(f"Ошибка в фарме: {error}")
+            await interaction.response.send_message("❌ Системная ошибка при попытке выйти на охоту.", ephemeral=True)
 
     # ---------------------------------------------- Административные команды ----------------------------------------------
     @app_commands.command(name="change_balance", description="Изменить баланс пользователя")
