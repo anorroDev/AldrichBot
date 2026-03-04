@@ -28,8 +28,10 @@ class MyBot(commands.Bot):
         self.db = await aiosqlite.connect('mybot.db')
         
         # Создание таблиц
-        await self.db.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, balance INTEGER)")
-        await self.db.execute("CREATE TABLE IF NOT EXISTS user_data (user_id INTEGER PRIMARY KEY, data TEXT)")
+        try:
+            await self.db.execute("ALTER TABLE users ADD COLUMN bank INTEGER DEFAULT 0")
+        except aiosqlite.OperationalError:
+            pass    
         await self.db.commit()
         print('Database connected and tables ensured.')
 

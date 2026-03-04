@@ -1,22 +1,31 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+import aiosqlite
+import random
+import asyncio
 
 
 class Economy(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="balance", description="Показать баланс пользователя")
-    @app_commands.describe(member="Выберите пользователя или оставьте пустым для отображения вашего баланса")
-
+    @app_commands.command(name="balance", description="Посмотреть сколько у тебя душ")
+    @app_commands.describe(member="Выберите пользователя, чтобы посмотреть его баланс (необязательно)")
     async def balance(self, interaction: discord.Interaction, member: discord.Member = None) -> None:
         target = member or interaction.user
-        async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (target.id,)) as cursor:
+        
+        async with self.bot.db.execute("SELECT balance, bank FROM users WHERE id = ?", (target.id,)) as cursor:
             row = await cursor.fetchone()
-        user_balance = row[0] if row else 0
+            
+        balance = row[0] if row else 0
+        bank = row[1] if row and row[1] else 0 
 
-        await interaction.response.send_message(f"💰 Баланс пользователя **{target.display_name}**: `{user_balance}` душ")
+        embed = discord.Embed(title=f"⚖️ Сосуд душ: {target.display_name}", color=discord.Color.dark_purple())
+        embed.add_field(name="С собой:", value=f"`{balance}` 👻", inline=True)
+        embed.add_field(name="В тайнике:", value=f"`{bank}` 🏰", inline=True)
+        
+        await interaction.response.send_message(embed=embed)
 
     @balance.error
     async def balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
@@ -65,7 +74,43 @@ class Economy(commands.Cog):
         
         await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
+    @app_commands.command(name="deposit", description="Спрятать души в безопасный тайник")
+    async def deposit(self, interaction: discord.Interaction, amount: int) -> None:
+        if amount <= 0:
+            await interaction.response.send_message("❌ Нельзя спрятать пустоту!", ephemeral=True)
+            return
 
+        async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
+            row = await cursor.fetchone()
+        balance = row[0] if row else 0
+
+        if balance < amount:
+            await interaction.response.send_message("❌ У тебя нет столько душ с собой!", ephemeral=True)
+            return
+
+        await self.bot.db.execute("UPDATE users SET balance = balance - ?, bank = bank + ? WHERE id = ?", (amount, amount, interaction.user.id))
+        await self.bot.db.commit()
+
+        await interaction.response.send_message(f"🏰 `{amount}` душ отправлено в тайник.")
+
+    @app_commands.command(name="withdraw", description="Забрать души из тайника")
+    async def withdraw(self, interaction: discord.Interaction, amount: int) -> None:
+        if amount <= 0:
+            return await interaction.response.send_message("❌ Укажи нормальную сумму!", ephemeral=True)
+
+        async with self.bot.db.execute("SELECT bank FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
+            row = await cursor.fetchone()
+        bank = row[0] if row and row[0] else 0
+
+        if bank < amount:
+            return await interaction.response.send_message("❌ В твоем тайнике нет столько душ!", ephemeral=True)
+
+        await self.bot.db.execute("UPDATE users SET balance = balance + ?, bank = bank - ? WHERE id = ?", (amount, amount, interaction.user.id))
+        await self.bot.db.commit()
+
+        await interaction.response.send_message(f"👻 Ты забрал `{amount}` душ из тайника.")
+
+    # ---------------------------------------------- Административные команды ----------------------------------------------
     @app_commands.command(name="change_balance", description="Изменить баланс пользователя")
     @app_commands.checks.has_permissions(administrator=True) 
     @app_commands.describe(

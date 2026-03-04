@@ -18,7 +18,6 @@ class General(commands.Cog):
 
     @app_commands.command(name="userinfo", description="Узнать информацию о пользователе")
     @app_commands.describe(member="Choose a member to get information about")
-    @app_commands.command(name="userinfo", description="Показать информацию о пользователе")
     async def userinfo(self, interaction: discord.Interaction, member: discord.Member) -> None:
 
         embed = discord.Embed(
