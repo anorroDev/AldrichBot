@@ -33,40 +33,45 @@ class Economy(commands.Cog):
         
         await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
-    @app_commands.command(name="leaderboard", description="Показать топ-10 самых богатых пользователей сервера")
+    @app_commands.command(name="leaderboard", description="Посмотреть доску почета (Топ по Душам и Активности)")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
+        embed = discord.Embed(title="🏆 Доска почета сервера", color=discord.Color.gold())
 
-        async with self.bot.db.execute("SELECT id, balance FROM users ORDER BY balance DESC LIMIT 10") as cursor:
-            rows = await cursor.fetchall()
+        async with self.bot.db.execute("SELECT id, (balance + bank) as total_souls FROM users WHERE total_souls > 0 ORDER BY total_souls DESC LIMIT 5") as cursor:
+            souls_rows = await cursor.fetchall()
 
-        if not rows:
-            await interaction.followup.send("Ошибка базы данных или нет данных для отображения таблицы лидеров.")
-            return
+        souls_text = ""
+        for index, row in enumerate(souls_rows, start=1):
+            medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else "🏅"
+            souls_text += f"{medal} <@{row[0]}> — `{row[1]}` 👻\n"
 
-        embed = discord.Embed(
-            title="🏆 Таблица лидеров (Топ-10)",
-            description="Самые богатые участники:\n\n",
-            color=discord.Color.gold()
+        if not souls_text:
+            souls_text = "Пока никто не собрал души..."
+
+        embed.add_field(name="👻 Топ богачей (Души)", value=souls_text, inline=False)
+
+        embed.add_field(
+            name="▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬", 
+            value="**🏆 Топ по Очкам Активности (За всё время)**", 
+            inline=False
         )
 
-        for index, row in enumerate(rows, start=1):
-            user_id = row[0]
-            balance = row[1]
-            
-            if index == 1:
-                medal = "🥇"
-            elif index == 2:
-                medal = "🥈"
-            elif index == 3:
-                medal = "🥉"
-            else:
-                medal = f"**{index}.**"
-            
-            # <@{user_id}> - превратит ID в имя (упоминание) пользователя
-            embed.description += f"{medal} <@{user_id}> — `{balance}` душ\n"
+        async with self.bot.db.execute("SELECT id, total_activity_points FROM users WHERE total_activity_points > 0 ORDER BY total_activity_points DESC LIMIT 5") as cursor:
+            ap_rows = await cursor.fetchall()
 
-        await interaction.followup.send(embed=embed)
+        ap_text = ""
+        for index, row in enumerate(ap_rows, start=1):
+            medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else "🏅"
+            ap_text += f"{medal} <@{row[0]}> — Заработано: `{row[1]}` АП\n"
+
+        if not ap_text:
+            ap_text = "Пока никто не проявил активность..."
+
+        embed.add_field(name="", value=ap_text, inline=False)
+
+        embed.set_footer(text="Будьте активней, чтобы попасть сюда!")
+
+        await interaction.response.send_message(embed=embed)
 
     @leaderboard.error
     async def leaderboard_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
@@ -209,5 +214,24 @@ class Economy(commands.Cog):
             print(f"[ОШИБКА В ИЗМЕНЕНИИ БАЛАНСА]: {error}") 
             await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
+    @app_commands.command(name="give_activity", description="[АДМИН] Наградить пользователя Очками Активности")
+    @app_commands.describe(member="Кого наградить?", amount="Сколько очков дать?")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def give_activity(self, interaction: discord.Interaction, member: discord.Member, amount: int) -> None:
+        if amount <= 0:
+            await interaction.response.send_message("❌ Количество очков должно быть больше нуля!", ephemeral=True)
+            return
+
+        query = """
+            INSERT INTO users (id, balance, bank, activity_points, total_activity_points) 
+            VALUES (?, 0, 0, ?, ?) 
+            ON CONFLICT(id) DO UPDATE SET 
+            activity_points = activity_points + ?,
+            total_activity_points = total_activity_points + ?
+        """
+        await self.bot.db.execute(query, (member.id, amount, amount, amount, amount))
+        await self.bot.db.commit()
+
+        await interaction.response.send_message(f"🏆 Администратор наградил {member.mention} Очками Активности в размере: `{amount}`")
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Economy(bot))

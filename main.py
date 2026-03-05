@@ -29,7 +29,7 @@ class MyBot(commands.Bot):
         
         # Создание таблиц
         try:
-            await self.db.execute("ALTER TABLE users ADD COLUMN bank INTEGER DEFAULT 0")
+            await self.db.execute("ALTER TABLE users ADD COLUMN total_activity_points INTEGER DEFAULT 0")
         except aiosqlite.OperationalError:
             pass    
         await self.db.commit()
