@@ -36,7 +36,7 @@ class Economy(commands.Cog):
     @app_commands.command(name="leaderboard", description="Посмотреть доску почета (Топ по Душам и Активности)")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
-            description="## 🏆 Доска почета сервера\n=======================================\n", 
+            description="## 🏆 Доска почета сервера\n==========\n", 
             color=discord.Color.gold()
         )
 
@@ -66,7 +66,7 @@ class Economy(commands.Cog):
         if not ap_text:
             ap_text = "Пока никто не проявил активность...\n"
 
-        ap_text += "\n======================================="
+        ap_text += "\n=========="
         
         embed.add_field(name="🏆 Топ активных", value=ap_text, inline=False)
 
@@ -162,6 +162,96 @@ class Economy(commands.Cog):
             print(f"Ошибка в фарме: {error}")
             await interaction.response.send_message("❌ Системная ошибка при попытке выйти на охоту.", ephemeral=True)
 
+# ----------------------------------------------- Магазин  ----------------------------------------------
+    @app_commands.command(name="shop", description="🛒 Открыть магазин ролей за Очки Активности")
+    async def shop(self, interaction: discord.Interaction) -> None:
+        embed = discord.Embed(
+            description="# 🛒 Магазин Ролей\nЗдесь вы можете обменять Очки Активности (АП) на эксклюзивные роли.\n==========\n",
+            color=discord.Color.green()
+        )
+        
+        for item in SHOP_ITEMS:
+            role = interaction.guild.get_role(int(item["value"]))
+            role_name = role.name if role else "Неизвестная роль"
+            
+            embed.add_field(
+                name=f"{item['emoji']} {role_name}", 
+                value=f"Цена: `{item['price']}` АП\n*{item['description']}*", 
+                inline=False
+            )
+            
+        embed.set_footer(text="Выберите роль в меню ниже, чтобы совершить покупку!")
+
+        await interaction.response.send_message(embed=embed, view=ShopView(self.bot, interaction.guild))
+
+SHOP_ITEMS = [
+    {
+        "value": 1477601614171738193,
+        "price": 50,
+        "description": "Тестовая роль для проверки работы магазина. Не имеет особых привилегий.",
+        "emoji": "🧪"
+    }
+]
+
+class ShopSelect(discord.ui.Select):
+    def __init__(self, bot, guild: discord.Guild):
+        self.bot = bot
+        options = []
+        
+        for item in SHOP_ITEMS:
+            role = guild.get_role(int(item["value"]))
+            role_name = role.name if role else f"Удаленная роль ({item['value']})"
+            
+            options.append(
+                discord.SelectOption(
+                    label=role_name,
+                    description=f"Цена: {item['price']} АП",
+                    value=str(item["value"]),
+                    emoji=item["emoji"]
+                )
+            )
+            
+        super().__init__(placeholder="Выберите роль для покупки...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        role_id = int(self.values[0])
+        item = next((x for x in SHOP_ITEMS if x["value"] == role_id), None)
+        
+        if not item:
+            return await interaction.response.send_message("❌ Ошибка: Товар не найден.", ephemeral=True)
+
+        price = item["price"]
+        role = interaction.guild.get_role(role_id)
+        
+        if not role:
+            return await interaction.response.send_message("❌ Ошибка: Роль не найдена на сервере.", ephemeral=True)
+
+        if role in interaction.user.roles:
+            return await interaction.response.send_message("❌ У вас уже есть эта роль!", ephemeral=True)
+
+        async with self.bot.db.execute("SELECT activity_points FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
+            row = await cursor.fetchone()
+        
+        balance = row[0] if row and row[0] else 0
+
+        if balance < price:
+            return await interaction.response.send_message(f"❌ Недостаточно Очков Активности! Нужно: `{price}` АП, у вас: `{balance}` АП.", ephemeral=True)
+
+        try:
+            await interaction.user.add_roles(role, reason="Покупка в магазине ролей")
+        except discord.Forbidden:
+            return await interaction.response.send_message("❌ У меня нет прав выдать эту роль. Моя роль должна быть ВЫШЕ покупаемой в настройках сервера!", ephemeral=True)
+
+        await self.bot.db.execute("UPDATE users SET activity_points = activity_points - ? WHERE id = ?", (price, interaction.user.id))
+        await self.bot.db.commit()
+
+        await interaction.response.send_message(f"🎉 Вы успешно купили роль {role.mention} за `{price}` АП!", ephemeral=True)
+
+
+class ShopView(discord.ui.View):
+    def __init__(self, bot, guild: discord.Guild):
+        super().__init__(timeout=None)
+        self.add_item(ShopSelect(bot, guild))
     # ---------------------------------------------- Административные команды ----------------------------------------------
     @app_commands.command(name="change_balance", description="Изменить баланс пользователя")
     @app_commands.checks.has_permissions(administrator=True) 
@@ -209,7 +299,7 @@ class Economy(commands.Cog):
             print(f"[ОШИБКА В ИЗМЕНЕНИИ БАЛАНСА]: {error}") 
             await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
-    @app_commands.command(name="give_activity", description="[АДМИН] Наградить пользователя Очками Активности")
+    @app_commands.command(name="give_activity", description="Наградить пользователя Очками Активности")
     @app_commands.describe(member="Кого наградить?", amount="Сколько очков дать?")
     @app_commands.checks.has_permissions(administrator=True)
     async def give_activity(self, interaction: discord.Interaction, member: discord.Member, amount: int) -> None:
