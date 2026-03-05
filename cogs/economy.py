@@ -35,7 +35,7 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="leaderboard", description="Посмотреть доску почета (Топ по Душам и Активности)")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
-        embed = discord.Embed(title="🏆 Доска почета сервера", color=discord.Color.gold())
+        embed = discord.Embed(title="🏆 Доска почета", color=discord.Color.gold())
 
         async with self.bot.db.execute("SELECT id, (balance + bank) as total_souls FROM users WHERE total_souls > 0 ORDER BY total_souls DESC LIMIT 5") as cursor:
             souls_rows = await cursor.fetchall()
@@ -48,21 +48,21 @@ class Economy(commands.Cog):
         if not souls_text:
             souls_text = "Пока никто не собрал души..."
 
-        embed.add_field(name="👻 Топ богачей (Души)", value=souls_text, inline=False)
+        embed.add_field(name="👻 Топ богачей", value=souls_text, inline=False)
 
         embed.add_field(
             name="▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬", 
-            value="**🏆 Топ по Очкам Активности (За всё время)**", 
+            value="**🏆 Самые активные участники**", 
             inline=False
         )
 
-        async with self.bot.db.execute("SELECT id, total_activity_points FROM users WHERE total_activity_points > 0 ORDER BY total_activity_points DESC LIMIT 5") as cursor:
+        async with self.bot.db.execute("SELECT id, activity_points, total_activity_points FROM users WHERE activity_points > 0 ORDER BY activity_points DESC LIMIT 5") as cursor:
             ap_rows = await cursor.fetchall()
 
         ap_text = ""
         for index, row in enumerate(ap_rows, start=1):
             medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else "🏅"
-            ap_text += f"{medal} <@{row[0]}> — Заработано: `{row[1]}` АП\n"
+            ap_text += f"{medal} <@{row[0]}> — Текущие: `{row[1]}` (Всего: `{row[2]}`)\n"
 
         if not ap_text:
             ap_text = "Пока никто не проявил активность..."
@@ -72,12 +72,6 @@ class Economy(commands.Cog):
         embed.set_footer(text="Будьте активней, чтобы попасть сюда!")
 
         await interaction.response.send_message(embed=embed)
-
-    @leaderboard.error
-    async def leaderboard_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
-        print(f"[ОШИБКА В ЛИДЕРБОРДЕ]: {error}") 
-        
-        await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
     @app_commands.command(name="deposit", description="Спрятать души в безопасный тайник")
     async def deposit(self, interaction: discord.Interaction, amount: int) -> None:
