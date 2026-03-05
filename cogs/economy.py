@@ -35,7 +35,10 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="leaderboard", description="Посмотреть доску почета (Топ по Душам и Активности)")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
-        embed = discord.Embed(title="🏆 Доска почета", color=discord.Color.gold())
+        embed = discord.Embed(
+            description="## 🏆 Доска почета сервера\n=======================================\n", 
+            color=discord.Color.gold()
+        )
 
         async with self.bot.db.execute("SELECT id, (balance + bank) as total_souls FROM users WHERE total_souls > 0 ORDER BY total_souls DESC LIMIT 5") as cursor:
             souls_rows = await cursor.fetchall()
@@ -46,15 +49,11 @@ class Economy(commands.Cog):
             souls_text += f"{medal} <@{row[0]}> — `{row[1]}` 👻\n"
 
         if not souls_text:
-            souls_text = "Пока никто не собрал души..."
+            souls_text = "Пока никто не собрал души...\n"
 
+        souls_text += "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
         embed.add_field(name="👻 Топ богачей", value=souls_text, inline=False)
 
-        embed.add_field(
-            name="▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬", 
-            value="**🏆 Самые активные участники**", 
-            inline=False
-        )
 
         async with self.bot.db.execute("SELECT id, activity_points, total_activity_points FROM users WHERE activity_points > 0 ORDER BY activity_points DESC LIMIT 5") as cursor:
             ap_rows = await cursor.fetchall()
@@ -65,9 +64,11 @@ class Economy(commands.Cog):
             ap_text += f"{medal} <@{row[0]}> — Текущие: `{row[1]}` (Всего: `{row[2]}`)\n"
 
         if not ap_text:
-            ap_text = "Пока никто не проявил активность..."
+            ap_text = "Пока никто не проявил активность...\n"
 
-        embed.add_field(name="", value=ap_text, inline=False)
+        ap_text += "\n======================================="
+        
+        embed.add_field(name="🏆 Топ активных", value=ap_text, inline=False)
 
         embed.set_footer(text="Будьте активней, чтобы попасть сюда!")
 
