@@ -32,7 +32,7 @@ class Moderation(commands.Cog):
         await member.timeout(duration, reason=reason)
         await interaction.response.send_message(f"🔇 Пользователь **{member.display_name}** был заглушен на {minutes} минут. Причина: `{reason}`")
 
-    @app_commands.command(name="unmute", description="[МОД] Досрочно снять мут (таймаут) с пользователя")
+    @app_commands.command(name="unmute", description="Досрочно снять мут (таймаут) с пользователя")
     @app_commands.describe(member="Кого размутить?", reason="Причина амнистии")
     @app_commands.checks.has_permissions(moderate_members=True)
     async def unmute(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Причина не указана") -> None:
