@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-
 SHOP_ITEMS = [
     {
         "value": 1477601614171738193,
@@ -65,7 +64,6 @@ class ShopView(discord.ui.View):
         self.add_item(ShopSelect(bot, guild))
 
 
-
 class Activity(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -76,7 +74,6 @@ class Activity(commands.Cog):
             description="## 🏆 Доска почета сервера\n==========\n", 
             color=discord.Color.gold()
         )
-
 
         async with self.bot.db.execute("SELECT id, level FROM users ORDER BY level DESC LIMIT 5") as cursor:
             level_rows = await cursor.fetchall()
@@ -109,40 +106,6 @@ class Activity(commands.Cog):
         embed.set_footer(text="Будьте активней и прокачивайте уровень, чтобы попасть сюда!")
 
         await interaction.response.send_message(embed=embed)
-
-    @app_commands.command(name="deposit", description="Спрятать души в безопасный тайник")
-    async def deposit(self, interaction: discord.Interaction, amount: int) -> None:
-        if amount <= 0:
-            return await interaction.response.send_message("❌ Нельзя спрятать пустоту!", ephemeral=True)
-
-        async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
-            row = await cursor.fetchone()
-        balance = row[0] if row else 0
-
-        if balance < amount:
-            return await interaction.response.send_message("❌ У тебя нет столько душ с собой!", ephemeral=True)
-
-        await self.bot.db.execute("UPDATE users SET balance = balance - ?, bank = bank + ? WHERE id = ?", (amount, amount, interaction.user.id))
-        await self.bot.db.commit()
-
-        await interaction.response.send_message(f"🏰 `{amount}` душ отправлено в тайник.")
-
-    @app_commands.command(name="withdraw", description="Забрать души из тайника")
-    async def withdraw(self, interaction: discord.Interaction, amount: int) -> None:
-        if amount <= 0:
-            return await interaction.response.send_message("❌ Укажи нормальную сумму!", ephemeral=True)
-
-        async with self.bot.db.execute("SELECT bank FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
-            row = await cursor.fetchone()
-        bank = row[0] if row and row[0] else 0
-
-        if bank < amount:
-            return await interaction.response.send_message("❌ В твоем тайнике нет столько душ!", ephemeral=True)
-
-        await self.bot.db.execute("UPDATE users SET balance = balance + ?, bank = bank - ? WHERE id = ?", (amount, amount, interaction.user.id))
-        await self.bot.db.commit()
-
-        await interaction.response.send_message(f"👻 Ты забрал `{amount}` душ из тайника.")
 
     @app_commands.command(name="shop", description="🛒 Открыть магазин ролей за Очки Активности")
     async def shop(self, interaction: discord.Interaction) -> None:
@@ -192,7 +155,7 @@ class Activity(commands.Cog):
         await self.bot.db.execute(query, (member.id, new_balance, new_balance))
         await self.bot.db.commit()
 
-        await interaction.response.send_message(f"💰 Баланс **{member.display_name}** {action_text} `{amount}` душ. \n🏦 Текущий счет: `{new_balance}`", ephemeral=True)
+        await interaction.response.send_message(f"💰 Баланс **{member.display_name}** {action_text} `{amount}` душ. \n💰 Текущий счет: `{new_balance}`", ephemeral=True)
 
     @change_balance.error
     async def change_balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
@@ -209,8 +172,8 @@ class Activity(commands.Cog):
         if amount <= 0: return await interaction.response.send_message("❌ Количество очков должно быть больше нуля!", ephemeral=True)
 
         query = """
-            INSERT INTO users (id, balance, bank, activity_points, total_activity_points) 
-            VALUES (?, 0, 0, ?, ?) 
+            INSERT INTO users (id, balance, activity_points, total_activity_points) 
+            VALUES (?, 0, ?, ?) 
             ON CONFLICT(id) DO UPDATE SET 
             activity_points = activity_points + ?,
             total_activity_points = total_activity_points + ?
