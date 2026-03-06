@@ -20,7 +20,7 @@ class MyBot(commands.Bot):
         # Загрузка когов
         await self.load_extension('cogs.general')
         await self.load_extension('cogs.moderation')
-        await self.load_extension('cogs.economy')
+        await self.load_extension('cogs.activity')
         await self.load_extension("cogs.game")
         print('Cogs loaded successfully.')
         

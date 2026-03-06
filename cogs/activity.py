@@ -64,53 +64,33 @@ class ShopView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(ShopSelect(bot, guild))
 
-class Economy(commands.Cog):
+
+
+class Activity(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="balance", description="Посмотреть сколько у тебя душ")
-    @app_commands.describe(member="Выберите пользователя, чтобы посмотреть его баланс (необязательно)")
-    async def balance(self, interaction: discord.Interaction, member: discord.Member = None) -> None:
-        target = member or interaction.user
-        
-        async with self.bot.db.execute("SELECT balance, bank FROM users WHERE id = ?", (target.id,)) as cursor:
-            row = await cursor.fetchone()
-            
-        balance = row[0] if row else 0
-        bank = row[1] if row and row[1] else 0 
-
-        embed = discord.Embed(title=f"⚖️ Сосуд душ: {target.display_name}", color=discord.Color.dark_purple())
-        embed.add_field(name="С собой:", value=f"`{balance}` 👻", inline=True)
-        embed.add_field(name="В тайнике:", value=f"`{bank}` 🏰", inline=True)
-        
-        await interaction.response.send_message(embed=embed)
-
-    @balance.error
-    async def balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
-        print(f"[ОШИБКА В БАЛАНСЕ]: {error}") 
-        await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
-
-    @app_commands.command(name="leaderboard", description="Посмотреть доску почета (Топ по Душам и Активности)")
+    @app_commands.command(name="leaderboard", description="Посмотреть доску почета (Топ по Уровню и Активности)")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
             description="## 🏆 Доска почета сервера\n==========\n", 
             color=discord.Color.gold()
         )
 
-        async with self.bot.db.execute("SELECT id, (balance + bank) as total_souls FROM users WHERE total_souls > 0 ORDER BY total_souls DESC LIMIT 5") as cursor:
-            souls_rows = await cursor.fetchall()
 
-        souls_text = ""
-        for index, row in enumerate(souls_rows, start=1):
+        async with self.bot.db.execute("SELECT id, level FROM users ORDER BY level DESC LIMIT 5") as cursor:
+            level_rows = await cursor.fetchall()
+
+        level_text = ""
+        for index, row in enumerate(level_rows, start=1):
             medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else "🏅"
-            souls_text += f"{medal} <@{row[0]}> — `{row[1]}` 👻\n"
+            level_text += f"{medal} <@{row[0]}> — **{row[1]}** уровень\n"
 
-        if not souls_text:
-            souls_text = "Пока никто не собрал души...\n"
+        if not level_text:
+            level_text = "Пока никто не повысил уровень...\n"
 
-        souls_text += "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
-        embed.add_field(name="👻 Топ богачей", value=souls_text, inline=False)
-
+        level_text += "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+        embed.add_field(name="🔥 Высшие чины (Топ по уровню)", value=level_text, inline=False)
 
         async with self.bot.db.execute("SELECT id, activity_points, total_activity_points FROM users WHERE activity_points > 0 ORDER BY activity_points DESC LIMIT 5") as cursor:
             ap_rows = await cursor.fetchall()
@@ -126,7 +106,7 @@ class Economy(commands.Cog):
         ap_text += "\n=========="
         
         embed.add_field(name="🏆 Топ активных", value=ap_text, inline=False)
-        embed.set_footer(text="Будьте активней, чтобы попасть сюда!")
+        embed.set_footer(text="Будьте активней и прокачивайте уровень, чтобы попасть сюда!")
 
         await interaction.response.send_message(embed=embed)
 
@@ -240,5 +220,6 @@ class Economy(commands.Cog):
 
         await interaction.response.send_message(f"🏆 Администратор наградил {member.mention} Очками Активности в размере: `{amount}`")
 
+
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(Economy(bot))
+    await bot.add_cog(Activity(bot))
