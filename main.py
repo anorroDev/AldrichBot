@@ -22,17 +22,26 @@ class MyBot(commands.Bot):
         await self.load_extension('cogs.moderation')
         await self.load_extension('cogs.ui_elements')
         await self.load_extension('cogs.economy')
+        await self.load_extension("cogs.game")
         print('Cogs loaded successfully.')
         
         # Инициализация базы данных
         self.db = await aiosqlite.connect('mybot.db')
         
         # Создание таблиц
-        try:
-            await self.db.execute("ALTER TABLE users ADD COLUMN total_activity_points INTEGER DEFAULT 0")
-        except aiosqlite.OperationalError:
-            pass    
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN level INTEGER DEFAULT 1")
+        except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN stat_points INTEGER DEFAULT 0")
+        except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN lost_souls INTEGER DEFAULT 0")
+        except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN char_name TEXT")
+        except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN current_location TEXT DEFAULT 'graveyard'")
+        except: pass
         await self.db.commit()
+            
+      
         print('Database connected and tables ensured.')
 
 

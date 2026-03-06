@@ -155,5 +155,6 @@ class General(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
+        
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(General(bot))

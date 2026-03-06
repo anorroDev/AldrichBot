@@ -5,7 +5,6 @@ import aiosqlite
 import random
 import asyncio
 
-
 class Economy(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -110,59 +109,47 @@ class Economy(commands.Cog):
 
         await interaction.response.send_message(f"👻 Ты забрал `{amount}` душ из тайника.")
 
-    # ---------------------------------------------- Заработок ----------------------------------------------
-    def get_farm_cooldown(interaction: discord.Interaction):
-        if not isinstance(interaction.user, discord.Member):
-            return app_commands.Cooldown(1, 3600)
 
-        role_ids = [role.id for role in interaction.user.roles]
-
-        if 1446126804908638348 in role_ids:
-            return None
-
-        return app_commands.Cooldown(1, 3600)
-
-
-    @app_commands.command(name="farm", description="Отправиться на охоту за душами. ОСТОРОЖНО: Можно потерять всё!")
-    @app_commands.checks.dynamic_cooldown(get_farm_cooldown, key=lambda i: i.user.id)
-    async def farm(self, interaction: discord.Interaction) -> None:
-        chance = random.randint(1, 100)
+        @app_commands.command(name="levelup", description="🔥 Отдохнуть у костра и повысить уровень за души")
+        async def levelup(self, interaction: discord.Interaction) -> None:
+            user_id = interaction.user.id
         
-        if chance <= 15:
-            await self.bot.db.execute("UPDATE users SET balance = 0 WHERE id = ?", (interaction.user.id,))
-            await self.bot.db.commit()
+        async with self.bot.db.execute("SELECT balance, level, stat_points FROM users WHERE id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
             
+        balance = row[0] if row else 0
+        level = row[1] if row and row[1] else 1
+        stat_points = row[2] if row and row[2] else 0
+        
+        if level >= 80:
+            return await interaction.response.send_message("👑 Вы достигли максимального **80 уровня**! Дальнейшая прокачка невозможна.", ephemeral=True)
+            
+        next_level = level + 1
+        cost = get_level_cost(next_level)
+        
+        if balance < cost:
             embed = discord.Embed(
-                title="☠️ ВЫ ПОГИБЛИ!", 
-                description="Тьма поглотила вас на охоте. **Вы потеряли все души**, которые были при вас!", 
-                color=discord.Color.red()
+                title="🔥 Недостаточно душ", 
+                description=f"Для перехода на **{next_level} уровень** требуется `{cost}` 👻 душ.\nУ вас в кармане: `{balance}` 👻.",
+                color=discord.Color.dark_gray()
             )
-            embed.set_footer(text="Надеюсь, вы успели спрятать часть в тайник...")
-            await interaction.response.send_message(embed=embed)
-        else:
-            reward = random.randint(20, 70) 
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
             
-            query = "INSERT INTO users (id, balance, bank) VALUES (?, ?, 0) ON CONFLICT(id) DO UPDATE SET balance = balance + ?"
-            await self.bot.db.execute(query, (interaction.user.id, reward, reward))
-            await self.bot.db.commit()
-            
-            await interaction.response.send_message(f"⚔️ Охота прошла успешно! Вы поглотили `{reward}` душ.\n*Не забудьте спрятать их в тайник (`/deposit`), пока вас не убили!*")
+        await self.bot.db.execute(
+            "UPDATE users SET balance = balance - ?, level = ?, stat_points = stat_points + 1 WHERE id = ?", 
+            (cost, next_level, user_id)
+        )
+        await self.bot.db.commit()
+        
+        embed = discord.Embed(
+            title="✨ УРОВЕНЬ ПОВЫШЕН!",
+            description=f"Вы пожертвовали `{cost}` 👻 душ костру.\n\nТекущий уровень: **{next_level}**\nПолучено **1 очко характеристик** (Остаток: `{stat_points + 1}`).",
+            color=discord.Color.gold()
+        )
+        embed.set_footer(text=f"Шанс смерти в локациях снижен! Следующий уровень обойдется в {get_level_cost(next_level + 1)} душ.")
+        await interaction.response.send_message(embed=embed)
 
-
-    @farm.error
-    async def farm_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
-        if isinstance(error, app_commands.CommandOnCooldown):
-            minutes_left = int(error.retry_after // 60)
-            seconds_left = int(error.retry_after % 60)
-            await interaction.response.send_message(
-                f"⏳ Твои силы иссякли. Следующая охота будет доступна через `{minutes_left} мин. {seconds_left} сек.`", 
-                ephemeral=True
-            )
-        else:
-            print(f"Ошибка в фарме: {error}")
-            await interaction.response.send_message("❌ Системная ошибка при попытке выйти на охоту.", ephemeral=True)
-
-# ----------------------------------------------- Магазин  ----------------------------------------------
+    # ----------------------------------------------- Магазин  ----------------------------------------------
     @app_commands.command(name="shop", description="🛒 Открыть магазин ролей за Очки Активности")
     async def shop(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
@@ -281,9 +268,8 @@ class ShopView(discord.ui.View):
         elif action.value == "remove":
             new_balance = current_balance - amount
             action_text = "уменьшен на"
-            # Защита от отрицательного баланса 
-            # if new_balance < 0:
-            #    new_balance = 0 
+            if new_balance < 0:
+                new_balance = 0 
                 
         query = "INSERT INTO users (id, balance) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET balance = ?"
         await self.bot.db.execute(query, (member.id, new_balance, new_balance))
@@ -318,5 +304,6 @@ class ShopView(discord.ui.View):
         await self.bot.db.commit()
 
         await interaction.response.send_message(f"🏆 Администратор наградил {member.mention} Очками Активности в размере: `{amount}`")
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Economy(bot))
