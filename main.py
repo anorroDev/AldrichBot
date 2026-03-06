@@ -20,15 +20,23 @@ class MyBot(commands.Bot):
         # Загрузка когов
         await self.load_extension('cogs.general')
         await self.load_extension('cogs.moderation')
-        await self.load_extension('cogs.ui_elements')
         await self.load_extension('cogs.economy')
         await self.load_extension("cogs.game")
         print('Cogs loaded successfully.')
         
-        # Инициализация базы данных
         self.db = await aiosqlite.connect('mybot.db')
-        
-        # Создание таблиц
+       
+        # Создание базы данных и таблицы        
+        await self.db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY,
+                balance INTEGER DEFAULT 0,
+                bank INTEGER DEFAULT 0,
+                activity_points INTEGER DEFAULT 0,
+                total_activity_points INTEGER DEFAULT 0
+            )
+        """)
+
         try: await self.db.execute("ALTER TABLE users ADD COLUMN level INTEGER DEFAULT 1")
         except: pass
         try: await self.db.execute("ALTER TABLE users ADD COLUMN stat_points INTEGER DEFAULT 0")
@@ -39,11 +47,10 @@ class MyBot(commands.Bot):
         except: pass
         try: await self.db.execute("ALTER TABLE users ADD COLUMN current_location TEXT DEFAULT 'graveyard'")
         except: pass
+        
         await self.db.commit()
             
-      
         print('Database connected and tables ensured.')
-
 
         await self.tree.sync()
         print('Slash commands synced successfully.')

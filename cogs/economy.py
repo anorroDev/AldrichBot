@@ -1,9 +1,68 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import aiosqlite
-import random
-import asyncio
+
+
+SHOP_ITEMS = [
+    {
+        "value": 1477601614171738193,
+        "price": 50,
+        "description": "Тестовая роль для проверки работы магазина. Не имеет особых привилегий.",
+        "emoji": "🧪"
+    }
+]
+
+class ShopSelect(discord.ui.Select):
+    def __init__(self, bot, guild: discord.Guild):
+        self.bot = bot
+        options = []
+        for item in SHOP_ITEMS:
+            role = guild.get_role(int(item["value"]))
+            role_name = role.name if role else f"Удаленная роль ({item['value']})"
+            options.append(
+                discord.SelectOption(
+                    label=role_name,
+                    description=f"Цена: {item['price']} АП",
+                    value=str(item["value"]),
+                    emoji=item["emoji"]
+                )
+            )
+        super().__init__(placeholder="Выберите роль для покупки...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        role_id = int(self.values[0])
+        item = next((x for x in SHOP_ITEMS if x["value"] == role_id), None)
+        
+        if not item: return await interaction.response.send_message("❌ Ошибка: Товар не найден.", ephemeral=True)
+
+        price = item["price"]
+        role = interaction.guild.get_role(role_id)
+        
+        if not role: return await interaction.response.send_message("❌ Ошибка: Роль не найдена на сервере.", ephemeral=True)
+        if role in interaction.user.roles: return await interaction.response.send_message("❌ У вас уже есть эта роль!", ephemeral=True)
+
+        async with self.bot.db.execute("SELECT activity_points FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
+            row = await cursor.fetchone()
+        
+        balance = row[0] if row and row[0] else 0
+
+        if balance < price:
+            return await interaction.response.send_message(f"❌ Недостаточно Очков Активности! Нужно: `{price}` АП, у вас: `{balance}` АП.", ephemeral=True)
+
+        try:
+            await interaction.user.add_roles(role, reason="Покупка в магазине ролей")
+        except discord.Forbidden:
+            return await interaction.response.send_message("❌ У меня нет прав выдать эту роль. Моя роль должна быть ВЫШЕ покупаемой!", ephemeral=True)
+
+        await self.bot.db.execute("UPDATE users SET activity_points = activity_points - ? WHERE id = ?", (price, interaction.user.id))
+        await self.bot.db.commit()
+
+        await interaction.response.send_message(f"🎉 Вы успешно купили роль {role.mention} за `{price}` АП!", ephemeral=True)
+
+class ShopView(discord.ui.View):
+    def __init__(self, bot, guild: discord.Guild):
+        super().__init__(timeout=None)
+        self.add_item(ShopSelect(bot, guild))
 
 class Economy(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -29,7 +88,6 @@ class Economy(commands.Cog):
     @balance.error
     async def balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         print(f"[ОШИБКА В БАЛАНСЕ]: {error}") 
-        
         await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
     @app_commands.command(name="leaderboard", description="Посмотреть доску почета (Топ по Душам и Активности)")
@@ -68,7 +126,6 @@ class Economy(commands.Cog):
         ap_text += "\n=========="
         
         embed.add_field(name="🏆 Топ активных", value=ap_text, inline=False)
-
         embed.set_footer(text="Будьте активней, чтобы попасть сюда!")
 
         await interaction.response.send_message(embed=embed)
@@ -76,16 +133,14 @@ class Economy(commands.Cog):
     @app_commands.command(name="deposit", description="Спрятать души в безопасный тайник")
     async def deposit(self, interaction: discord.Interaction, amount: int) -> None:
         if amount <= 0:
-            await interaction.response.send_message("❌ Нельзя спрятать пустоту!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ Нельзя спрятать пустоту!", ephemeral=True)
 
         async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
             row = await cursor.fetchone()
         balance = row[0] if row else 0
 
         if balance < amount:
-            await interaction.response.send_message("❌ У тебя нет столько душ с собой!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ У тебя нет столько душ с собой!", ephemeral=True)
 
         await self.bot.db.execute("UPDATE users SET balance = balance - ?, bank = bank + ? WHERE id = ?", (amount, amount, interaction.user.id))
         await self.bot.db.commit()
@@ -109,136 +164,20 @@ class Economy(commands.Cog):
 
         await interaction.response.send_message(f"👻 Ты забрал `{amount}` душ из тайника.")
 
-
-        @app_commands.command(name="levelup", description="🔥 Отдохнуть у костра и повысить уровень за души")
-        async def levelup(self, interaction: discord.Interaction) -> None:
-            user_id = interaction.user.id
-        
-        async with self.bot.db.execute("SELECT balance, level, stat_points FROM users WHERE id = ?", (user_id,)) as cursor:
-            row = await cursor.fetchone()
-            
-        balance = row[0] if row else 0
-        level = row[1] if row and row[1] else 1
-        stat_points = row[2] if row and row[2] else 0
-        
-        if level >= 80:
-            return await interaction.response.send_message("👑 Вы достигли максимального **80 уровня**! Дальнейшая прокачка невозможна.", ephemeral=True)
-            
-        next_level = level + 1
-        cost = get_level_cost(next_level)
-        
-        if balance < cost:
-            embed = discord.Embed(
-                title="🔥 Недостаточно душ", 
-                description=f"Для перехода на **{next_level} уровень** требуется `{cost}` 👻 душ.\nУ вас в кармане: `{balance}` 👻.",
-                color=discord.Color.dark_gray()
-            )
-            return await interaction.response.send_message(embed=embed, ephemeral=True)
-            
-        await self.bot.db.execute(
-            "UPDATE users SET balance = balance - ?, level = ?, stat_points = stat_points + 1 WHERE id = ?", 
-            (cost, next_level, user_id)
-        )
-        await self.bot.db.commit()
-        
-        embed = discord.Embed(
-            title="✨ УРОВЕНЬ ПОВЫШЕН!",
-            description=f"Вы пожертвовали `{cost}` 👻 душ костру.\n\nТекущий уровень: **{next_level}**\nПолучено **1 очко характеристик** (Остаток: `{stat_points + 1}`).",
-            color=discord.Color.gold()
-        )
-        embed.set_footer(text=f"Шанс смерти в локациях снижен! Следующий уровень обойдется в {get_level_cost(next_level + 1)} душ.")
-        await interaction.response.send_message(embed=embed)
-
-    # ----------------------------------------------- Магазин  ----------------------------------------------
     @app_commands.command(name="shop", description="🛒 Открыть магазин ролей за Очки Активности")
     async def shop(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
             description="# 🛒 Магазин Ролей\nЗдесь вы можете обменять Очки Активности (АП) на эксклюзивные роли.\n==========\n",
             color=discord.Color.green()
         )
-        
         for item in SHOP_ITEMS:
             role = interaction.guild.get_role(int(item["value"]))
             role_name = role.name if role else "Неизвестная роль"
-            
-            embed.add_field(
-                name=f"{item['emoji']} {role_name}", 
-                value=f"Цена: `{item['price']}` АП\n*{item['description']}*", 
-                inline=False
-            )
+            embed.add_field(name=f"{item['emoji']} {role_name}", value=f"Цена: `{item['price']}` АП\n*{item['description']}*", inline=False)
             
         embed.set_footer(text="Выберите роль в меню ниже, чтобы совершить покупку!")
-
         await interaction.response.send_message(embed=embed, view=ShopView(self.bot, interaction.guild))
 
-SHOP_ITEMS = [
-    {
-        "value": 1477601614171738193,
-        "price": 50,
-        "description": "Тестовая роль для проверки работы магазина. Не имеет особых привилегий.",
-        "emoji": "🧪"
-    }
-]
-
-class ShopSelect(discord.ui.Select):
-    def __init__(self, bot, guild: discord.Guild):
-        self.bot = bot
-        options = []
-        
-        for item in SHOP_ITEMS:
-            role = guild.get_role(int(item["value"]))
-            role_name = role.name if role else f"Удаленная роль ({item['value']})"
-            
-            options.append(
-                discord.SelectOption(
-                    label=role_name,
-                    description=f"Цена: {item['price']} АП",
-                    value=str(item["value"]),
-                    emoji=item["emoji"]
-                )
-            )
-            
-        super().__init__(placeholder="Выберите роль для покупки...", min_values=1, max_values=1, options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        role_id = int(self.values[0])
-        item = next((x for x in SHOP_ITEMS if x["value"] == role_id), None)
-        
-        if not item:
-            return await interaction.response.send_message("❌ Ошибка: Товар не найден.", ephemeral=True)
-
-        price = item["price"]
-        role = interaction.guild.get_role(role_id)
-        
-        if not role:
-            return await interaction.response.send_message("❌ Ошибка: Роль не найдена на сервере.", ephemeral=True)
-
-        if role in interaction.user.roles:
-            return await interaction.response.send_message("❌ У вас уже есть эта роль!", ephemeral=True)
-
-        async with self.bot.db.execute("SELECT activity_points FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
-            row = await cursor.fetchone()
-        
-        balance = row[0] if row and row[0] else 0
-
-        if balance < price:
-            return await interaction.response.send_message(f"❌ Недостаточно Очков Активности! Нужно: `{price}` АП, у вас: `{balance}` АП.", ephemeral=True)
-
-        try:
-            await interaction.user.add_roles(role, reason="Покупка в магазине ролей")
-        except discord.Forbidden:
-            return await interaction.response.send_message("❌ У меня нет прав выдать эту роль. Моя роль должна быть ВЫШЕ покупаемой в настройках сервера!", ephemeral=True)
-
-        await self.bot.db.execute("UPDATE users SET activity_points = activity_points - ? WHERE id = ?", (price, interaction.user.id))
-        await self.bot.db.commit()
-
-        await interaction.response.send_message(f"🎉 Вы успешно купили роль {role.mention} за `{price}` АП!", ephemeral=True)
-
-
-class ShopView(discord.ui.View):
-    def __init__(self, bot, guild: discord.Guild):
-        super().__init__(timeout=None)
-        self.add_item(ShopSelect(bot, guild))
     # ---------------------------------------------- Административные команды ----------------------------------------------
     @app_commands.command(name="change_balance", description="Изменить баланс пользователя")
     @app_commands.checks.has_permissions(administrator=True) 
@@ -253,7 +192,6 @@ class ShopView(discord.ui.View):
         app_commands.Choice(name="➖ Отнять (Remove)", value="remove")
     ])
     async def change_balance(self, interaction: discord.Interaction, action: app_commands.Choice[str], member: discord.Member, amount: int) -> None:
-        
         async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (member.id,)) as cursor:
             row = await cursor.fetchone()
         
@@ -268,8 +206,7 @@ class ShopView(discord.ui.View):
         elif action.value == "remove":
             new_balance = current_balance - amount
             action_text = "уменьшен на"
-            if new_balance < 0:
-                new_balance = 0 
+            if new_balance < 0: new_balance = 0 
                 
         query = "INSERT INTO users (id, balance) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET balance = ?"
         await self.bot.db.execute(query, (member.id, new_balance, new_balance))
@@ -289,9 +226,7 @@ class ShopView(discord.ui.View):
     @app_commands.describe(member="Кого наградить?", amount="Сколько очков дать?")
     @app_commands.checks.has_permissions(administrator=True)
     async def give_activity(self, interaction: discord.Interaction, member: discord.Member, amount: int) -> None:
-        if amount <= 0:
-            await interaction.response.send_message("❌ Количество очков должно быть больше нуля!", ephemeral=True)
-            return
+        if amount <= 0: return await interaction.response.send_message("❌ Количество очков должно быть больше нуля!", ephemeral=True)
 
         query = """
             INSERT INTO users (id, balance, bank, activity_points, total_activity_points) 
