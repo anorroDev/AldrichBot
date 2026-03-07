@@ -124,7 +124,6 @@ class LevelUpUI(discord.ui.View):
         cost = get_level_cost(next_level)
         
         if balance < cost:
-            # ИСПРАВЛЕНИЕ: Красиво встраиваем ошибку прямо в карточку костра!
             new_embed = await self.generate_levelup_embed()
             new_embed.add_field(
                 name="❌ НЕДОСТАТОЧНО ДУШ", 
@@ -133,7 +132,6 @@ class LevelUpUI(discord.ui.View):
             )
             return await interaction.response.edit_message(embed=new_embed, view=self)
             
-        # Если душ хватает — списываем и повышаем уровень
         await self.bot.db.execute("UPDATE users SET balance = balance - ?, level = ?, stat_points = stat_points + 1 WHERE id = ?", (cost, next_level, self.user.id))
         await self.bot.db.commit()
         
@@ -177,7 +175,6 @@ class FarmUI(discord.ui.View):
 
         if roll <= death_chance:
             new_lost_souls = balance
-            # ДОБАВЛЕНО: current_location = ? и передаем location_key
             await self.bot.db.execute("UPDATE users SET balance = 0, lost_souls = ?, current_location = ? WHERE id = ?", (new_lost_souls, location_key, self.user.id))
             await self.bot.db.commit()
             
@@ -194,7 +191,6 @@ class FarmUI(discord.ui.View):
                 reward += lost_souls
                 recovered_text = f"\n🩸 Вы коснулись пятна крови и вернули `{lost_souls}` 👻 душ!"
 
-            # ДОБАВЛЕНО: current_location = ? и передаем location_key
             await self.bot.db.execute("UPDATE users SET balance = balance + ?, lost_souls = 0, current_location = ? WHERE id = ?", (reward, location_key, self.user.id))
             await self.bot.db.commit()
             
@@ -225,7 +221,7 @@ class GameUI(discord.ui.View):
     def __init__(self, bot, user):
         super().__init__(timeout=None)
         self.bot = bot
-        self.user = user # Теперь мы передаем всего юзера, чтобы брать его аватарку
+        self.user = user
 
     async def get_main_embed(self):
         async with self.bot.db.execute("SELECT char_name, level, balance FROM users WHERE id = ?", (self.user.id,)) as cursor:
@@ -239,7 +235,7 @@ class GameUI(discord.ui.View):
             description=f"# 🏕️ {name}\n\nВы находитесь в безопасной зоне. Отсюда можно отправиться в рейд, проверить свои навыки или посидеть у костра.\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n",
             color=discord.Color.dark_theme()
         )
-        embed.set_thumbnail(url=self.user.display_avatar.url) # ОГРОМНЫЙ ПЛЮС К РАЗМЕРУ КАРТОЧКИ!
+        embed.set_thumbnail(url=self.user.display_avatar.url)
         embed.add_field(name="🔸 Текущий Уровень", value=f"**{level}**", inline=True)
         embed.add_field(name="🔸 Накоплено Душ", value=f"**{souls}** 👻", inline=True)
         embed.add_field(name="🔸 Локация", value="`Безопасная зона`", inline=False)
@@ -258,7 +254,6 @@ class GameUI(discord.ui.View):
     async def btn_lvlup(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
             
-        # Переключаем на LevelUpUI и генерируем карточку костра
         lvlup_view = LevelUpUI(self.bot, self.user, main_view=self)
         embed = await lvlup_view.generate_levelup_embed()
         
@@ -281,10 +276,41 @@ class GameUI(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=farm_view)
 
 
+class RegistrationModal(discord.ui.Modal, title='Создание персонажа'):
+    char_name = discord.ui.TextInput(
+        label='Имя вашего героя',
+        placeholder='Например: Арториас',
+        min_length=3,
+        max_length=20,
+    )
+
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+
+    async def on_submit(self, interaction: discord.Interaction):
+        name = self.char_name.value
+        user_id = interaction.user.id
+        
+        await self.bot.db.execute(
+            "INSERT INTO users (id, balance, char_name, level, stat_points) VALUES (?, 0, ?, 1, 0) ON CONFLICT(id) DO UPDATE SET char_name = ?", 
+            (user_id, name, name)
+        )
+        await self.bot.db.commit()
+        
+        view = GameUI(self.bot, interaction.user)
+        embed = await view.get_main_embed()
+        
+        await interaction.response.send_message(
+            content=f"🎉 Вы успешно создали персонажа **{name}**! Добро пожаловать к костру.", 
+            embed=embed, 
+            view=view
+        )
+
+
 class Game(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-
 
     @app_commands.command(name="game", description="🎮 Открыть игровое меню персонажа")
     async def game(self, interaction: discord.Interaction) -> None:
@@ -294,7 +320,8 @@ class Game(commands.Cog):
             row = await cursor.fetchone()
             
         if not row or not row[0]:
-            return await interaction.response.send_message("❌ Сначала создайте персонажа с помощью `/register`!", ephemeral=True)
+            # Вызываем всплывающее окно регистрации
+            return await interaction.response.send_modal(RegistrationModal(self.bot))
 
         view = GameUI(self.bot, interaction.user)
         embed = await view.get_main_embed()
