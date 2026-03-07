@@ -22,6 +22,7 @@ class MyBot(commands.Bot):
         await self.load_extension('cogs.moderation')
         await self.load_extension('cogs.activity')
         await self.load_extension("cogs.game")
+        await self.load_extension("cogs.voice")
         print('Cogs loaded successfully.')
         
         self.db = await aiosqlite.connect('mybot.db')
@@ -46,6 +47,8 @@ class MyBot(commands.Bot):
         try: await self.db.execute("ALTER TABLE users ADD COLUMN char_name TEXT")
         except: pass
         try: await self.db.execute("ALTER TABLE users ADD COLUMN current_location TEXT DEFAULT 'graveyard'")
+        except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN voice_time INTEGER DEFAULT 0")
         except: pass
         
         await self.db.commit()
