@@ -1,2 +1,3 @@
-# mybot
-My discord bot
+# AldrichBot
+В разработке
+
