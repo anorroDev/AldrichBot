@@ -29,6 +29,13 @@ class MyBot(commands.Bot):
                 total_activity_points INTEGER DEFAULT 0
             )
         """)
+        await self.db.execute("""
+            CREATE TABLE IF NOT EXISTS user_achievements (
+                user_id INTEGER,
+                achievement_id TEXT,
+                UNIQUE(user_id, achievement_id)
+            )
+        """)
 
         try: await self.db.execute("ALTER TABLE users ADD COLUMN level INTEGER DEFAULT 1")
         except: pass
@@ -42,6 +49,8 @@ class MyBot(commands.Bot):
         except: pass
         try: await self.db.execute("ALTER TABLE users ADD COLUMN voice_time INTEGER DEFAULT 0")
         except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN message_count INTEGER DEFAULT 0")
+        except: pass
         
         await self.db.commit()    
         print('Database connected and tables ensured.')
@@ -53,6 +62,7 @@ class MyBot(commands.Bot):
         await self.load_extension("cogs.game")
         await self.load_extension("cogs.voice")
         await self.load_extension("cogs.giveaway")
+        await self.load_extension("cogs.achievements")
         print('Cogs loaded successfully.')
           
 
