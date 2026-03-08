@@ -17,16 +17,8 @@ class MyBot(commands.Bot):
         self.db = None
 
     async def setup_hook(self):
-        # Загрузка когов
-        await self.load_extension('cogs.general')
-        await self.load_extension('cogs.moderation')
-        await self.load_extension('cogs.activity')
-        await self.load_extension("cogs.game")
-        await self.load_extension("cogs.voice")
-        print('Cogs loaded successfully.')
-        
         self.db = await aiosqlite.connect('mybot.db')
-       
+     
         # Создание базы данных и таблицы        
         await self.db.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -51,9 +43,18 @@ class MyBot(commands.Bot):
         try: await self.db.execute("ALTER TABLE users ADD COLUMN voice_time INTEGER DEFAULT 0")
         except: pass
         
-        await self.db.commit()
-            
+        await self.db.commit()    
         print('Database connected and tables ensured.')
+
+        # Загрузка когов
+        await self.load_extension('cogs.general')
+        await self.load_extension('cogs.moderation')
+        await self.load_extension('cogs.activity')
+        await self.load_extension("cogs.game")
+        await self.load_extension("cogs.voice")
+        await self.load_extension("cogs.giveaway")
+        print('Cogs loaded successfully.')
+          
 
         await self.tree.sync()
         print('Slash commands synced successfully.')
