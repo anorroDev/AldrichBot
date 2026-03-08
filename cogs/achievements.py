@@ -57,7 +57,7 @@ class AchievementUI(discord.ui.View):
 
         cat_names = {"activity": "💬 Активность", "game": "⚔️ Игра"}
         embed = discord.Embed(
-            description=f"# 🏆 Достижения: {cat_names.get(category, '')}\nВыполняйте условия, чтобы получать уникальные награды.\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n", 
+            description=f"# 🏆 Достижения: {cat_names.get(category, '')}\nВыполняйте условия, чтобы получать уникальные награды.\n Награды включают в себя унимальные роли,\n описание которых вы можете прочивать в #info\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n", 
             color=discord.Color.gold()
         )
         embed.set_thumbnail(url=self.user.display_avatar.url)
