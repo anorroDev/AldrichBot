@@ -186,16 +186,21 @@ class FarmUI(discord.ui.View):
                 embed.description += "\n⚠️ **Предыдущее кровавое пятно исчезло. Старые души утеряны!**"
         else:
             reward = random.randint(loc_data["min_souls"], loc_data["max_souls"])
+            new_farmed_souls = reward 
+            
             recovered_text = ""
             if lost_souls > 0:
                 reward += lost_souls
                 recovered_text = f"\n🩸 Вы коснулись пятна крови и вернули `{lost_souls}` 👻 душ!"
 
-            await self.bot.db.execute("UPDATE users SET balance = balance + ?, lost_souls = 0, current_location = ? WHERE id = ?", (reward, location_key, self.user.id))
+            await self.bot.db.execute(
+                "UPDATE users SET balance = balance + ?, lost_souls = 0, current_location = ?, total_souls_farmed = total_souls_farmed + ? WHERE id = ?", 
+                (reward, location_key, new_farmed_souls, self.user.id)
+            )
             await self.bot.db.commit()
             
             embed.title = "⚔️ Охота успешна!"
-            embed.description = f"## Локация: {loc_data['name']}\nВы выжили и принесли `{reward - lost_souls}` 👻 душ.{recovered_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+            embed.description = f"## Локация: {loc_data['name']}\nВы выжили и принесли `{new_farmed_souls}` 👻 душ.{recovered_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
             embed.color = discord.Color.green()
             embed.set_footer(text=f"Шанс смерти составил {death_chance}% (Снижено вашим уровнем)")
 

@@ -2,6 +2,18 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
+ACHIEVEMENTS = {
+    "activity": [
+        {"id": "msg_100", "name": "Новичок ", "desc": "Напишите 100 сообщений в чатах.", "target": 100, "type": "messages", "reward_text": "50 АП", "reward_ap": 50},
+        {"id": "msg_1000", "name": "Легенда чата", "desc": "Напишите 1000 сообщений.", "target": 1000, "type": "messages", "reward_text": "500 АП", "reward_ap": 300},
+        {"id": "voice_100", "name": "Душа компании", "desc": "Проведите 100 часов в голосовых каналах.", "target": 36000, "type": "voice", "reward_text": "500 АП", "reward_ap": 500}
+    ],
+    "game": [
+        {"id": "lvl_10", "name": "Закаленный в боях", "desc": "Достигните 10 уровня у костра.", "target": 10, "type": "level", "reward_text": "100 АП", "reward_ap": 100},
+        {"id": "souls_10000", "name": "Лорд Пепла", "desc": "Накопите 10 000 душ.", "target": 10000, "type": "souls", "reward_text": "250 АП", "reward_ap": 100}
+    ]
+}
+
 class VerifyView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=None)

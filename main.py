@@ -51,6 +51,8 @@ class MyBot(commands.Bot):
         except: pass
         try: await self.db.execute("ALTER TABLE users ADD COLUMN message_count INTEGER DEFAULT 0")
         except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN total_souls_farmed INTEGER DEFAULT 0")
+        except: pass
         
         await self.db.commit()    
         print('Database connected and tables ensured.')
