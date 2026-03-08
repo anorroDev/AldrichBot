@@ -143,6 +143,14 @@ class VoiceMaster(commands.Cog):
                     await self.bot.db.commit()
 
         if after.channel and after.channel.id == HUB_CHANNEL_ID:
+            if not member.guild_permissions.set_voice_channel_status:
+                await member.move_to(None)
+                try:
+                    await member.send("❌ **Доступ запрещен!**\nСоздавать приватные комнаты могут только пользователи с правом «Устанавливать статус голосового канала». Зарабатывайте достижения, чтобы получить доступ!")
+                except discord.Forbidden:
+                    pass
+                return
+
             guild = member.guild
             category = guild.get_channel(CATEGORY_ID)
             
