@@ -52,8 +52,11 @@ class General(commands.Cog):
         await interaction.response.send_message("Произошла ошибка при выполнении команды /ping.", ephemeral=True)
 
     @app_commands.command(name="userinfo", description="Узнать информацию о пользователе")
-    @app_commands.describe(member="Выберите пользователя")
-    async def userinfo(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    @app_commands.describe(member="Выберите пользователя (оставьте пустым для себя)")
+    async def userinfo(self, interaction: discord.Interaction, member: discord.Member | None = None) -> None:
+
+        if member is None:
+            member = interaction.user
 
         embed = discord.Embed(
             title="👤 User Information", 
@@ -98,6 +101,24 @@ class General(commands.Cog):
             value=ap_text, 
             inline=False
         )
+
+        # 6. Игровой профиль
+        try:
+            async with self.bot.db.execute("SELECT char_name, level FROM users WHERE id = ?", (member.id,)) as cursor:
+                prof = await cursor.fetchone()
+            if prof and prof[0]:
+                char_name = prof[0]
+                char_level = prof[1] if prof[1] else 1
+                embed.add_field(
+                    name="🎮 Персонаж",
+                    value=f"{char_name} — уровень: `{char_level}`",
+                    inline=False
+                )
+            else:
+                embed.add_field(name="🎮 Персонаж", value="Нет персонажа", inline=False)
+        except Exception as e:
+            print(f"Ошибка БД в userinfo (профиль): {e}")
+            embed.add_field(name="🎮 Персонаж", value="Данные недоступны", inline=False)
 
         roles = [role.mention for role in member.roles if role.name != "@everyone"]
         roles_text = ", ".join(roles) if roles else "No roles"
