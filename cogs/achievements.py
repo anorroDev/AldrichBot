@@ -23,7 +23,7 @@ ACHIEVEMENTS = {
         {"id": "msg_1000", "name": "Легенда чата", "desc": "Напишите 1000 сообщений.", "target": 1000, "type": "messages", "reward_text": "500 АП + Роль Мудреца", "reward_ap": 500, "reward_role": 1480298458035519579},
         {"id": "msg_5000", "name": "Магистр Слов", "desc": "Напишите 5000 сообщений.", "target": 5000, "type": "messages", "reward_text": "1000 АП + Роль Хранителя Архивов", "reward_ap": 5000, "reward_role": 1480298580341293209},
         {"id": "voice_10", "name": "Душа компании", "desc": "Проведите 10 часов в голосовых каналах.", "target": 36000, "type": "voice", "reward_text": "100 АП + Роль", "reward_ap": 100, "reward_role": 1480299968567971840},
-        {"id": "voice_50", "name": "Душа компании", "desc": "Проведите 50 часов в голосовых каналах.", "target": 180000, "type": "voice", "reward_text": "250 АП", "reward_ap": 250},
+        {"id": "voice_50", "name": "Задрот", "desc": "Проведите 50 часов в голосовых каналах.", "target": 180000, "type": "voice", "reward_text": "250 АП", "reward_ap": 250},
         {"id": "voice_100", "name": "Голос Сервера", "desc": "Проведите 100 часов в голосовых каналах.", "target": 360000, "type": "voice", "reward_text": "500 АП + Роль", "reward_ap": 500, "reward_role": 1480300125065707612},
         {"id": "voice_500", "name": "Призрак Войса", "desc": "Проведите 500 часов в голосовых каналах.", "target": 1800000, "type": "voice", "reward_text": "5000 АП + Роль", "reward_ap": 5000, "reward_role": 1480300525978386493}
 
@@ -57,7 +57,7 @@ class AchievementUI(discord.ui.View):
 
         cat_names = {"activity": "💬 Активность", "game": "⚔️ Игра"}
         embed = discord.Embed(
-            description=f"# 🏆 Достижения: {cat_names.get(category, '')}\nВыполняйте условия, чтобы получать уникальные награды.\n Награды включают в себя унимальные роли,\n описание которых вы можете прочивать в #info\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n", 
+            description=f"# 🏆 Достижения: {cat_names.get(category, '')}\nВыполняйте условия, чтобы получать уникальные награды.\n Награды включают в себя уникальные роли,\n описание которых вы можете прочитать в #info\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n", 
             color=discord.Color.gold()
         )
         embed.set_thumbnail(url=self.user.display_avatar.url)
