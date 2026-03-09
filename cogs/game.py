@@ -5,6 +5,7 @@ import random
 import math
 import asyncio
 import aiosqlite
+import time
 
 def get_level_cost(target_level: int) -> int:
     if target_level <= 1:
@@ -23,9 +24,12 @@ def get_level_cost(target_level: int) -> int:
 
 
 LOCATIONS = {
-    "graveyard": {"name": "🪦 Кладбище", "base_death": 15, "min_souls": 150, "max_souls": 350},
-    "catacombs": {"name": "💀 Катакомбы", "base_death": 35, "min_souls": 400, "max_souls": 900},
-    "abyss": {"name": "🌌 Бездна", "base_death": 60, "min_souls": 1000, "max_souls": 2500}
+    "graveyard": {"name": "🪦 Кладбище", "base_death": 40, "min_souls": 100, "max_souls": 200, "req_hunts": 0},
+    "forest": {"name": "🌲 Проклятый лес", "base_death": 50, "min_souls": 200, "max_souls": 400, "req_hunts": 10},
+    "catacombs": {"name": "💀 Катакомбы", "base_death": 55, "min_souls": 500, "max_souls": 750, "req_hunts": 25},
+    "castle": {"name": "🏰 Заброшенный замок", "base_death": 65, "min_souls": 800, "max_souls": 1000, "req_hunts": 45},
+    "peak": {"name": "🌋 Пик Дракона", "base_death": 75, "min_souls": 1200, "max_souls": 2000, "req_hunts": 70},
+    "abyss": {"name": "🌌 Бездна", "base_death": 95, "min_souls": 2500, "max_souls": 4000, "req_hunts": 100}
 }
 
 async def get_profile_embed(bot, user: discord.Member):
@@ -34,14 +38,13 @@ async def get_profile_embed(bot, user: discord.Member):
         row = await cursor.fetchone()
         
     if not row or not row[0]:
-        return None # Если персонажа нет
+        return None 
         
     char_name = row[0]
     level = row[1]
     souls = row[2]
     loc_key = row[3] if row[3] else "camp"
     
-    # Расшифровываем ключ локации в красивое название
     if loc_key in LOCATIONS:
         loc_name = LOCATIONS[loc_key]["name"]
     else:
@@ -160,14 +163,38 @@ class FarmUI(discord.ui.View):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
 
         loc_data = LOCATIONS[location_key]
-        async with self.bot.db.execute("SELECT balance, level, lost_souls FROM users WHERE id = ?", (self.user.id,)) as cursor:
+        async with self.bot.db.execute("SELECT balance, level, lost_souls, energy, last_energy_update, successful_hunts FROM users WHERE id = ?", (self.user.id,)) as cursor:
             row = await cursor.fetchone()
 
-        balance = row[0] if row else 0
-        level = row[1] if row and row[1] else 1
-        lost_souls = row[2] if row and row[2] else 0
+        if not row: return
+        balance, level, lost_souls, energy, last_update, hunts = row
+        now = int(time.time())
 
-        death_chance = max(1, loc_data["base_death"] - (level - 1))
+        if hunts < loc_data["req_hunts"]:
+            return await interaction.response.send_message(f"🔒 Локация закрыта! Нужно {loc_data['req_hunts']} успешных побед.", ephemeral=True)
+
+        if energy < 5:
+            passed_time = now - last_update
+            recovered = passed_time // 300 
+            if recovered > 0:
+                energy += recovered
+                if energy >= 5:
+                    energy, last_update = 5, 0
+                else:
+                    last_update += recovered * 300
+                await self.bot.db.execute("UPDATE users SET energy = ?, last_energy_update = ? WHERE id = ?", (energy, last_update, self.user.id))
+                await self.bot.db.commit()
+
+        if energy < 1:
+            time_left = 300 - ((now - last_update) % 300)
+            mins, secs = divmod(time_left, 60)
+            return await interaction.response.send_message(f"💤 Вы истощены! Следующее очко бодрости через **{mins} мин. {secs} сек.**", ephemeral=True)
+
+        energy -= 1
+        if last_update == 0: 
+            last_update = now
+
+        death_chance = max(5, loc_data["base_death"] - (level - 1))
         roll = random.randint(1, 100)
 
         embed = discord.Embed(color=discord.Color.dark_theme())
@@ -175,52 +202,66 @@ class FarmUI(discord.ui.View):
 
         if roll <= death_chance:
             new_lost_souls = balance
-            await self.bot.db.execute("UPDATE users SET balance = 0, lost_souls = ?, current_location = ? WHERE id = ?", (new_lost_souls, location_key, self.user.id))
+            await self.bot.db.execute(
+                "UPDATE users SET balance = 0, lost_souls = ?, current_location = ?, energy = ?, last_energy_update = ? WHERE id = ?", 
+                (new_lost_souls, location_key, energy, last_update, self.user.id)
+            )
             await self.bot.db.commit()
             
             embed.title = "☠️ ВЫ ПОГИБЛИ!"
-            embed.description = f"## Локация: {loc_data['name']}\nТьма поглотила вас.\nВы выронили `{new_lost_souls}` 👻 душ.\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+            embed.description = f"## Локация: {loc_data['name']}\nТьма поглотила вас.\nВы выронили `{new_lost_souls}` 👻 душ.\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **0** 👻\nОсталось бодрости: ⚡ {energy}/5"
             embed.color = discord.Color.red()
             
             if lost_souls > 0:
                 embed.description += "\n⚠️ **Предыдущее кровавое пятно исчезло. Старые души утеряны!**"
         else:
             reward = random.randint(loc_data["min_souls"], loc_data["max_souls"])
-            new_farmed_souls = reward 
+            pure_reward = reward 
+            new_hunts = hunts + 1 
             
             recovered_text = ""
             if lost_souls > 0:
                 reward += lost_souls
                 recovered_text = f"\n🩸 Вы коснулись пятна крови и вернули `{lost_souls}` 👻 душ!"
 
+            new_balance = balance + reward 
+
             await self.bot.db.execute(
-                "UPDATE users SET balance = balance + ?, lost_souls = 0, current_location = ?, total_souls_farmed = total_souls_farmed + ? WHERE id = ?", 
-                (reward, location_key, new_farmed_souls, self.user.id)
+                "UPDATE users SET balance = balance + ?, lost_souls = 0, current_location = ?, total_souls_farmed = total_souls_farmed + ?, energy = ?, last_energy_update = ?, successful_hunts = ? WHERE id = ?", 
+                (reward, location_key, pure_reward, energy, last_update, new_hunts, self.user.id)
             )
             await self.bot.db.commit()
             
             embed.title = "⚔️ Охота успешна!"
-            embed.description = f"## Локация: {loc_data['name']}\nВы выжили и принесли `{new_farmed_souls}` 👻 душ.{recovered_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+            embed.description = f"## Локация: {loc_data['name']}\nВы выжили и принесли `{pure_reward}` 👻 душ.{recovered_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **{new_balance}** 👻\n🏆 Успешных побед: **{new_hunts}**\nОсталось бодрости: ⚡ {energy}/5"
             embed.color = discord.Color.green()
-            embed.set_footer(text=f"Шанс смерти составил {death_chance}% (Снижено вашим уровнем)")
+            embed.set_footer(text=f"Шанс смерти: {death_chance}% | Снижено уровнем")
 
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="🪦 Кладбище", style=discord.ButtonStyle.secondary, custom_id="farm_grave")
+    @discord.ui.button(label="🪦 Кладбище", style=discord.ButtonStyle.secondary, custom_id="farm_grave", row=0)
     async def btn_grave(self, interaction: discord.Interaction, button: discord.ui.Button): await self.process_farm(interaction, "graveyard")
 
-    @discord.ui.button(label="💀 Катакомбы", style=discord.ButtonStyle.secondary, custom_id="farm_cata")
+    @discord.ui.button(label="🌲 Лес", style=discord.ButtonStyle.secondary, custom_id="farm_forest", row=0)
+    async def btn_forest(self, interaction: discord.Interaction, button: discord.ui.Button): await self.process_farm(interaction, "forest")
+
+    @discord.ui.button(label="💀 Катакомбы", style=discord.ButtonStyle.secondary, custom_id="farm_cata", row=0)
     async def btn_cata(self, interaction: discord.Interaction, button: discord.ui.Button): await self.process_farm(interaction, "catacombs")
 
-    @discord.ui.button(label="🌌 Бездна", style=discord.ButtonStyle.danger, custom_id="farm_abyss")
+    @discord.ui.button(label="🏰 Замок", style=discord.ButtonStyle.danger, custom_id="farm_castle", row=1)
+    async def btn_castle(self, interaction: discord.Interaction, button: discord.ui.Button): await self.process_farm(interaction, "castle")
+
+    @discord.ui.button(label="🌋 Пик Дракона", style=discord.ButtonStyle.danger, custom_id="farm_peak", row=1)
+    async def btn_peak(self, interaction: discord.Interaction, button: discord.ui.Button): await self.process_farm(interaction, "peak")
+
+    @discord.ui.button(label="🌌 Бездна", style=discord.ButtonStyle.danger, custom_id="farm_abyss", row=1)
     async def btn_abyss(self, interaction: discord.Interaction, button: discord.ui.Button): await self.process_farm(interaction, "abyss")
 
-    @discord.ui.button(label="🔙 Вернуться в лагерь", style=discord.ButtonStyle.primary, row=1, custom_id="farm_back")
+    @discord.ui.button(label="🔙 Вернуться в лагерь", style=discord.ButtonStyle.primary, row=2, custom_id="farm_back")
     async def btn_back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
         embed = await self.main_view.get_main_embed()
         await interaction.response.edit_message(embed=embed, view=self.main_view)
-
 
 class GameUI(discord.ui.View):
     def __init__(self, bot, user):
@@ -268,18 +309,25 @@ class GameUI(discord.ui.View):
     async def btn_farm(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
             
+        # Запрашиваем энергию и победы
+        async with self.bot.db.execute("SELECT energy, successful_hunts FROM users WHERE id = ?", (self.user.id,)) as cursor:
+            row = await cursor.fetchone()
+        energy = row[0] if row else 5
+        hunts = row[1] if row else 0
+
         embed = discord.Embed(
-            description="## 🗺️ Выбор локации\n\nВыберите, куда отправитесь навстречу опасности.\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n", 
+            description=f"## 🗺️ Выбор локации\n\nЭнергия: **{'⚡' * energy}{'⚪' * (5 - energy)}** ({energy}/5)\nУспешных зачисток: 🏆 **{hunts}**\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n", 
             color=discord.Color.dark_red()
         )
         embed.set_thumbnail(url=self.user.display_avatar.url)
-        embed.add_field(name="🪦 Кладбище", value="`Низкий риск смертности`", inline=False)
-        embed.add_field(name="💀 Катакомбы", value="`Средний риск смертности`", inline=False)
-        embed.add_field(name="🌌 Бездна", value="`Смертельный риск`", inline=False)
+        
+        # Динамически выводим статус локаций
+        for key, data in LOCATIONS.items():
+            status = f"✅ Доступно" if hunts >= data['req_hunts'] else f"🔒 Нужно {data['req_hunts']} побед"
+            embed.add_field(name=data['name'], value=f"`{status}` | Риск: {data['base_death']}%", inline=False)
         
         farm_view = FarmUI(self.bot, self.user, main_view=self)
         await interaction.response.edit_message(embed=embed, view=farm_view)
-
 
 class RegistrationModal(discord.ui.Modal, title='Создание персонажа'):
     char_name = discord.ui.TextInput(
@@ -298,7 +346,7 @@ class RegistrationModal(discord.ui.Modal, title='Создание персона
         user_id = interaction.user.id
         
         await self.bot.db.execute(
-            "INSERT INTO users (id, balance, char_name, level, stat_points) VALUES (?, 0, ?, 1, 0) ON CONFLICT(id) DO UPDATE SET char_name = ?", 
+            "INSERT INTO users (id, balance, char_name, level, stat_points, energy, last_energy_update, successful_hunts) VALUES (?, 0, ?, 1, 0, 5, 0, 0) ON CONFLICT(id) DO UPDATE SET char_name = ?", 
             (user_id, name, name)
         )
         await self.bot.db.commit()
