@@ -195,9 +195,10 @@ class Achievements(commands.Cog):
 
     @app_commands.command(name="achievements", description="🏆 Посмотреть свои достижения и прогресс")
     async def achievements_cmd(self, interaction: discord.Interaction):
+        await interaction.response.send_message("Загрузка достижений...")
         view = AchievementUI(self.bot, interaction.user)
         embed = await view.generate_embed("activity")
-        await interaction.response.send_message(embed=embed, view=view)
+        await interaction.edit_original_response(content=None, embed=embed, view=view)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Achievements(bot))
