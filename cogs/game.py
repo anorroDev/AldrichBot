@@ -33,17 +33,13 @@ LOCATIONS = {
 }
 
 async def get_profile_embed(bot, user: discord.Member):
-    """Генерирует карточку профиля для любого игрока"""
-    async with bot.db.execute("SELECT char_name, level, balance, current_location FROM users WHERE id = ?", (user.id,)) as cursor:
+    async with bot.db.execute("SELECT char_name, level, balance, current_location, stat_points, strength, vitality, luck FROM users WHERE id = ?", (user.id,)) as cursor:
         row = await cursor.fetchone()
         
     if not row or not row[0]:
         return None 
         
-    char_name = row[0]
-    level = row[1]
-    souls = row[2]
-    loc_key = row[3] if row[3] else "camp"
+    char_name, level, souls, loc_key, stat_pts, strg, vit, luck = row
     
     if loc_key in LOCATIONS:
         loc_name = LOCATIONS[loc_key]["name"]
@@ -58,10 +54,15 @@ async def get_profile_embed(bot, user: discord.Member):
     embed.add_field(name="👤 Владелец", value=user.mention, inline=False)
     embed.add_field(name="🔸 Уровень", value=f"**{level}**", inline=True)
     embed.add_field(name="🔸 Души", value=f"**{souls}** 👻", inline=True)
-    embed.add_field(name="📍 Последняя локация", value=f"`{loc_name}`", inline=False)
+    embed.add_field(name="📍 Локация", value=f"`{loc_name}`", inline=True)
+    
+    embed.add_field(name="Свободные очки (SP)", value=f"🌟 **{stat_pts}**", inline=False)
+    embed.add_field(name="💪 Сила", value=f"**{strg}**", inline=True)
+    embed.add_field(name="❤️ Живучесть", value=f"**{vit}**", inline=True)
+    embed.add_field(name="🍀 Удача", value=f"**{luck}**", inline=True)
     
     return embed
-    
+   
 class ProfileUI(discord.ui.View):
     def __init__(self, bot, user, main_view):
         super().__init__(timeout=None)
@@ -74,7 +75,59 @@ class ProfileUI(discord.ui.View):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
         embed = await self.main_view.get_main_embed()
         await interaction.response.edit_message(embed=embed, view=self.main_view)
+class StatsUI(discord.ui.View):
+    def __init__(self, bot, user, main_view):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.user = user
+        self.main_view = main_view
 
+    async def generate_embed(self):
+        async with self.bot.db.execute("SELECT stat_points, strength, vitality, luck FROM users WHERE id = ?", (self.user.id,)) as cursor:
+            row = await cursor.fetchone()
+        sp, strg, vit, lck = row if row else (0, 1, 1, 1)
+
+        embed = discord.Embed(
+            title="⚖️ Распределение характеристик",
+            description=f"Свободных очков: 🌟 **{sp}**\n\n"
+                        f"💪 **Сила:** {strg} *(+{strg}% к добытым душам)*\n"
+                        f"❤️ **Живучесть:** {vit} *(-{vit * 0.5}% к шансу смерти)*\n"
+                        f"🍀 **Удача:** {lck} *(+{lck * 10} к макс. добыче душ)*\n\n"
+                        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬",
+            color=discord.Color.blue()
+        )
+        return embed, sp
+
+    async def upgrade_stat(self, interaction, stat_name):
+        if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
+        
+        async with self.bot.db.execute("SELECT stat_points FROM users WHERE id = ?", (self.user.id,)) as cursor:
+            sp = (await cursor.fetchone())[0]
+
+        if sp <= 0:
+            return await interaction.response.send_message("❌ У вас нет свободных очков!", ephemeral=True)
+
+        await self.bot.db.execute(f"UPDATE users SET stat_points = stat_points - 1, {stat_name} = {stat_name} + 1 WHERE id = ?", (self.user.id,))
+        await self.bot.db.commit()
+
+        embed, new_sp = await self.generate_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="+1 Сила", style=discord.ButtonStyle.secondary, emoji="💪", row=0)
+    async def btn_str(self, interaction: discord.Interaction, button: discord.ui.Button): await self.upgrade_stat(interaction, "strength")
+
+    @discord.ui.button(label="+1 Живучесть", style=discord.ButtonStyle.secondary, emoji="❤️", row=0)
+    async def btn_vit(self, interaction: discord.Interaction, button: discord.ui.Button): await self.upgrade_stat(interaction, "vitality")
+
+    @discord.ui.button(label="+1 Удача", style=discord.ButtonStyle.secondary, emoji="🍀", row=0)
+    async def btn_luck(self, interaction: discord.Interaction, button: discord.ui.Button): await self.upgrade_stat(interaction, "luck")
+
+    @discord.ui.button(label="🔙 Вернуться в лагерь", style=discord.ButtonStyle.primary, row=1)
+    async def btn_back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
+        embed = await self.main_view.get_main_embed()
+        await interaction.response.edit_message(embed=embed, view=self.main_view)
+        
 class LevelUpUI(discord.ui.View):
     def __init__(self, bot, user, main_view):
         super().__init__(timeout=None)
@@ -110,7 +163,7 @@ class LevelUpUI(discord.ui.View):
             
         return embed
 
-    @discord.ui.button(label="⬆️ Повысить уровень", style=discord.ButtonStyle.success, custom_id="lvlup_confirm")
+    @discord.ui.button(label="⬆️ Повысить уровень", style=discord.ButtonStyle.success, row=0, custom_id="lvlup_confirm")
     async def btn_confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
             
@@ -146,6 +199,13 @@ class LevelUpUI(discord.ui.View):
         )
         await interaction.response.edit_message(embed=new_embed, view=self)
 
+    @discord.ui.button(label="⚖️ Характеристики", style=discord.ButtonStyle.secondary, row=1, custom_id="lvlup_stats")
+    async def btn_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
+        stats_view = StatsUI(self.bot, self.user, main_view=self.main_view)
+        embed, _ = await stats_view.generate_embed()
+        await interaction.response.edit_message(embed=embed, view=stats_view)
+
     @discord.ui.button(label="🔙 Вернуться в лагерь", style=discord.ButtonStyle.primary, row=1, custom_id="lvlup_back")
     async def btn_back(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
@@ -163,11 +223,12 @@ class FarmUI(discord.ui.View):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
 
         loc_data = LOCATIONS[location_key]
-        async with self.bot.db.execute("SELECT balance, level, lost_souls, energy, last_energy_update, successful_hunts FROM users WHERE id = ?", (self.user.id,)) as cursor:
+        # ДОСТАЕМ ХАРАКТЕРИСТИКИ
+        async with self.bot.db.execute("SELECT balance, level, lost_souls, energy, last_energy_update, successful_hunts, strength, vitality, luck FROM users WHERE id = ?", (self.user.id,)) as cursor:
             row = await cursor.fetchone()
 
         if not row: return
-        balance, level, lost_souls, energy, last_update, hunts = row
+        balance, level, lost_souls, energy, last_update, hunts, strength, vitality, luck = row
         now = int(time.time())
 
         if hunts < loc_data["req_hunts"]:
@@ -190,12 +251,14 @@ class FarmUI(discord.ui.View):
             mins, secs = divmod(time_left, 60)
             return await interaction.response.send_message(f"💤 Вы истощены! Следующее очко бодрости через **{mins} мин. {secs} сек.**", ephemeral=True)
 
+        # 4. Тратим энергию и идем в бой
         energy -= 1
         if last_update == 0: 
             last_update = now
 
-        death_chance = max(5, loc_data["base_death"] - (level - 1))
-        roll = random.randint(1, 100)
+        # ИСПОЛЬЗУЕМ ЖИВУЧЕСТЬ (-0.5% шанса смерти за 1 очко)
+        death_chance = max(5, loc_data["base_death"] - (level - 1) - (vitality * 0.5))
+        roll = random.uniform(0, 100)
 
         embed = discord.Embed(color=discord.Color.dark_theme())
         embed.set_thumbnail(url=self.user.display_avatar.url)
@@ -215,7 +278,14 @@ class FarmUI(discord.ui.View):
             if lost_souls > 0:
                 embed.description += "\n⚠️ **Предыдущее кровавое пятно исчезло. Старые души утеряны!**"
         else:
-            reward = random.randint(loc_data["min_souls"], loc_data["max_souls"])
+            # Считаем базовую награду (Удача по-прежнему дает +10 к верхнему порогу)
+            max_farm = loc_data["max_souls"] + (luck * 10)
+            base_reward = random.randint(loc_data["min_souls"], max_farm)
+            
+            # ИСПОЛЬЗУЕМ СИЛУ (+1% к итоговому количеству душ за 1 очко)
+            bonus_multiplier = 1 + (strength * 0.01)
+            reward = int(base_reward * bonus_multiplier)
+            
             pure_reward = reward 
             new_hunts = hunts + 1 
             
@@ -235,7 +305,7 @@ class FarmUI(discord.ui.View):
             embed.title = "⚔️ Охота успешна!"
             embed.description = f"## Локация: {loc_data['name']}\nВы выжили и принесли `{pure_reward}` 👻 душ.{recovered_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **{new_balance}** 👻\n🏆 Успешных побед: **{new_hunts}**\nОсталось бодрости: ⚡ {energy}/5"
             embed.color = discord.Color.green()
-            embed.set_footer(text=f"Шанс смерти: {death_chance}% | Снижено уровнем")
+            embed.set_footer(text=f"Шанс смерти: {round(death_chance, 1)}% | Снижено уровнем и живучестью")
 
         await interaction.response.edit_message(embed=embed, view=self)
 

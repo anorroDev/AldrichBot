@@ -111,7 +111,7 @@ class General(commands.Cog):
                 char_level = prof[1] if prof[1] else 1
                 embed.add_field(
                     name="🎮 Персонаж",
-                    value=f"{char_name} — уровень: `{char_level}`",
+                    value=f"**{char_name}** — lvl: `{char_level}`",
                     inline=False
                 )
             else:

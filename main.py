@@ -59,6 +59,12 @@ class MyBot(commands.Bot):
         except: pass
         try: await self.db.execute("ALTER TABLE users ADD COLUMN successful_hunts INTEGER DEFAULT 0")
         except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN strength INTEGER DEFAULT 1")
+        except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN vitality INTEGER DEFAULT 1")
+        except: pass
+        try: await self.db.execute("ALTER TABLE users ADD COLUMN luck INTEGER DEFAULT 1")
+        except: pass
         
         await self.db.commit()    
         print('Database connected and tables ensured.')
