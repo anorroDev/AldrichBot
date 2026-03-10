@@ -19,7 +19,6 @@ class MyBot(commands.Bot):
     async def setup_hook(self):
         self.db = await aiosqlite.connect('mybot.db')
      
-        # Создание базы данных и таблицы        
         await self.db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY,
@@ -34,6 +33,14 @@ class MyBot(commands.Bot):
                 user_id INTEGER,
                 achievement_id TEXT,
                 UNIQUE(user_id, achievement_id)
+            )
+        """)
+        await self.db.execute("""
+            CREATE TABLE IF NOT EXISTS inventory (
+                user_id INTEGER,
+                item_name TEXT,
+                amount INTEGER DEFAULT 0,
+                UNIQUE(user_id, item_name)
             )
         """)
 
@@ -64,6 +71,8 @@ class MyBot(commands.Bot):
         try: await self.db.execute("ALTER TABLE users ADD COLUMN vitality INTEGER DEFAULT 1")
         except: pass
         try: await self.db.execute("ALTER TABLE users ADD COLUMN luck INTEGER DEFAULT 1")
+        except: pass
+        try: await self.db.execute("ALTER TABLE inventory ADD COLUMN equipped INTEGER DEFAULT 0")
         except: pass
         
         await self.db.commit()    

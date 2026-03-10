@@ -1,0 +1,7 @@
+LOCATIONS = {
+    "graveyard": {"name": "🪦 Кладбище", "base_death": 40, "min_souls": 100, "max_souls": 200, "req_hunts": 0},
+    "forest": {"name": "🌲 Проклятый лес", "base_death": 50, "min_souls": 200, "max_souls": 400, "req_hunts": 10},
+    "catacombs": {"name": "💀 Катакомбы", "base_death": 55, "min_souls": 500, "max_souls": 750, "req_hunts": 25},
+    "castle": {"name": "🏰 Заброшенный замок", "base_death": 65, "min_souls": 800, "max_souls": 1000, "req_hunts": 45},
+    "peak": {"name": "🌋 Пик Дракона", "base_death": 75, "min_souls": 1200, "max_souls": 2000, "req_hunts": 70},
+    "abyss": {"name": "🌌 Бездна", "base_death": 95, "min_souls": 2500, "max_souls": 4000, "req_hunts": 100}
