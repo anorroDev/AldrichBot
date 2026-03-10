@@ -186,10 +186,10 @@ class InventoryUI(discord.ui.View):
         if not flask_data or flask_data[1] <= 0: return await interaction.response.send_message("❌ У вас нет Фляги Бодрости!", ephemeral=True)
 
         await self.bot.db.execute("UPDATE inventory SET amount = amount - 1 WHERE user_id = ? AND item_name = 'flask'", (self.user.id,))
-        await self.bot.db.execute("UPDATE users SET energy = 5, last_energy_update = 0 WHERE id = ?", (self.user.id,))
+        await self.bot.db.execute("UPDATE users SET energy = energy + 5 WHERE id = ?", (self.user.id,))
         await self.bot.db.commit()
         embed = await self.generate_embed()
-        await interaction.response.edit_message(content="✅ Вы выпили Флягу! Энергия восстановлена (5/5).", embed=embed, view=self)
+        await interaction.response.edit_message(content="✅ Вы выпили Флягу! Получено +5 энергии.", embed=embed, view=self)
 
     @discord.ui.button(label="🔙 Вернуться", style=discord.ButtonStyle.primary, row=1)
     async def btn_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -361,14 +361,12 @@ class FarmUI(discord.ui.View):
         embed = discord.Embed(color=discord.Color.dark_theme())
         embed.set_thumbnail(url=self.user.display_avatar.url)
 
-        # ПРОВЕРЯЕМ КОЛЬЦО
         async with self.bot.db.execute("SELECT amount, equipped FROM inventory WHERE user_id = ? AND item_name = 'ring'", (self.user.id,)) as cursor:
             ring_row = await cursor.fetchone()
         has_equipped_ring = ring_row and ring_row[1] > 0
 
         if roll <= death_chance:
             if has_equipped_ring:
-                # КОЛЬЦО СПАСАЕТ
                 await self.bot.db.execute("UPDATE inventory SET amount = amount - 1, equipped = equipped - 1 WHERE user_id = ? AND item_name = 'ring'", (self.user.id,))
                 await self.bot.db.execute("UPDATE users SET energy = ?, last_energy_update = ? WHERE id = ?", (energy, last_update, self.user.id))
                 await self.bot.db.commit()
@@ -376,9 +374,8 @@ class FarmUI(discord.ui.View):
                 embed.title = "💍 КОЛЬЦО РАСКОЛОЛОСЬ!"
                 embed.description = f"## Локация: {loc_data['name']}\nСмертельный удар обрушился на вас, но надетое **Кольцо Жертвенности** вспыхнуло ярким светом и рассыпалось в прах. Души сохранены!\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **{balance}** 👻\nОсталось бодрости: ⚡ {energy}/5"
                 embed.color = discord.Color.gold()
-                await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user))
+                await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user, location_key, self))
             else:
-                # ОБЫЧНАЯ СМЕРТЬ
                 new_lost_souls = balance
                 await self.bot.db.execute("UPDATE users SET balance = 0, lost_souls = ?, current_location = ?, energy = ?, last_energy_update = ? WHERE id = ?", (new_lost_souls, location_key, energy, last_update, self.user.id))
                 await self.bot.db.commit()
@@ -387,9 +384,8 @@ class FarmUI(discord.ui.View):
                 embed.description = f"## Локация: {loc_data['name']}\nТьма поглотила вас.\nВы выронили `{new_lost_souls}` 👻 душ.\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **0** 👻\nОсталось бодрости: ⚡ {energy}/5"
                 embed.color = discord.Color.red()
                 if lost_souls > 0: embed.description += "\n⚠️ **Предыдущее кровавое пятно исчезло. Старые души утеряны!**"
-                await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user))
+                await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user, location_key, self))
         else:
-            # ПОБЕДА
             max_farm = loc_data["max_souls"] + (luck * 10)
             base_reward = random.randint(loc_data["min_souls"], max_farm)
             bonus_multiplier = 1 + (strength * 0.01)
@@ -412,12 +408,11 @@ class FarmUI(discord.ui.View):
             embed.color = discord.Color.green()
             embed.set_footer(text=f"Шанс смерти: {round(death_chance, 1)}% | Снижено уровнем и живучестью")
 
-            # СПАВН ТОРГОВЦА (15%)
-            if random.randint(1, 100) <= 15:
+            if random.randint(1, 100) <= 5:
                 embed.description += "\n\n🎒 **Странствующий торговец:** *«Эй, путник! Вижу, ты богат. Не хочешь взглянуть на мои товары?»*"
-                await interaction.response.edit_message(embed=embed, view=MerchantUI(self.bot.get_cog('Game'), self.user))
+                await interaction.response.edit_message(embed=embed, view=MerchantUI(self.bot.get_cog('Game'), self.user, location_key, self))
             else:
-                await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user))
+                await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user, location_key, self))
 
     @discord.ui.button(label="🪦 Кладбище", style=discord.ButtonStyle.secondary, custom_id="f_grave", row=0)
     async def b_grave(self, i: discord.Interaction, b: discord.ui.Button): await self.process_farm(i, "graveyard")
@@ -500,7 +495,6 @@ class RegistrationModal(discord.ui.Modal, title='Создание персона
 
     async def on_submit(self, interaction: discord.Interaction):
         name = self.char_name.value
-        # Исправлено: добавлены strength, vitality, luck
         await self.bot.db.execute("INSERT INTO users (id, balance, char_name, level, stat_points, energy, last_energy_update, successful_hunts, strength, vitality, luck) VALUES (?, 0, ?, 1, 0, 5, 0, 0, 1, 1, 1) ON CONFLICT(id) DO UPDATE SET char_name = ?", (interaction.user.id, name, name))
         await self.bot.db.commit()
         view = GameUI(self.bot, interaction.user)
@@ -511,7 +505,6 @@ class Game(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    # Метод добавлен
     async def send_hunt_menu(self, interaction: discord.Interaction, is_edit: bool = False):
         async with self.bot.db.execute("SELECT energy, last_energy_update, successful_hunts FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
             row = await cursor.fetchone()
@@ -565,7 +558,6 @@ class Game(commands.Cog):
         app_commands.Choice(name="🧪 Фляга Бодрости", value="flask")
     ])
     async def give_item(self, interaction: discord.Interaction, member: discord.Member, item_name: app_commands.Choice[str], amount: int):
-        # Исправлено: добавлена колонка equipped
         await self.bot.db.execute("INSERT INTO inventory (user_id, item_name, amount, equipped) VALUES (?, ?, ?, 0) ON CONFLICT(user_id, item_name) DO UPDATE SET amount = amount + ?", (member.id, item_name.value, amount, amount))
         await self.bot.db.commit()
         await interaction.response.send_message(f"✅ Вы выдали **{amount} шт. {item_name.name}** игроку {member.mention}.", ephemeral=True)
