@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import asyncio
 import aiosqlite
 
+
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
 
