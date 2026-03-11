@@ -84,7 +84,6 @@ class MyBot(commands.Bot):
         await self.load_extension('cogs.activity')
         await self.load_extension("cogs.game")
         await self.load_extension("cogs.voice")
-        await self.load_extension("cogs.giveaway")
         await self.load_extension("cogs.achievements")
         print('Cogs loaded successfully.')
           
