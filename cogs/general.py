@@ -240,38 +240,44 @@ class General(commands.Cog):
         await asyncio.sleep(seconds)        
         await interaction.channel.send(f"🔔 {interaction.user.mention}, напоминание: **{text}**")
     #alarm command
-    @app_commands.command(name="alarm", description="⏰ Завести будильник на точную дату и время")
+    @app_commands.command(name="alarm", description="⏰ Завести будильник на точное время")
     @app_commands.describe(
-        date="Дата в формате ДД.ММ.ГГГГ (например: 31.12.2026)",
         exact_time="Время в формате ЧЧ:ММ (например: 15:30)",
         text="О чем напомнить?",
-        tz_offset="Ваш часовой пояс (отклонение от UTC). Например: 3 для UTC+3"
+        date="Дата ДД.ММ.ГГГГ (Оставьте пустым для 'сегодня')",
+        tz_offset="Ваш пояс (отклонение от UTC). Например: 1 для UTC+1"
     )
-    async def alarm(self, interaction: discord.Interaction, date: str, exact_time: str, text: str, tz_offset: int = 3) -> None:
+    async def alarm(self, interaction: discord.Interaction, exact_time: str, text: str, date: str | None = None, tz_offset: int = 2) -> None:
         try:
+            tz = timezone(timedelta(hours=tz_offset))
+            is_auto_date = False
+            
+            if not date or date == "0":
+                date = datetime.now(tz).strftime("%d.%m.%Y")
+                is_auto_date = True
+                
             dt_str = f"{date} {exact_time}"
             dt = datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
-            
-            tz = timezone(timedelta(hours=tz_offset))
             dt = dt.replace(tzinfo=tz)
             
             target_ts = int(dt.timestamp())
             current_ts = int(interaction.created_at.timestamp())
-            
             seconds_to_wait = target_ts - current_ts
             
             if seconds_to_wait <= 0:
-                return await interaction.response.send_message("❌ Это время уже прошло! Укажите будущее время.", ephemeral=True)
+                if is_auto_date:
+                    dt += timedelta(days=1)
+                    target_ts = int(dt.timestamp())
+                    seconds_to_wait = target_ts - current_ts
+                else:
+                    return await interaction.response.send_message("❌ Это время уже прошло! Укажите будущее время.", ephemeral=True)
                 
             await interaction.response.send_message(f"✅ Будильник установлен!\n📝 **Причина:** {text}\n⏰ **Сработает:** <t:{target_ts}:F> (<t:{target_ts}:R>).")
-            
             await asyncio.sleep(seconds_to_wait)
-            
             await interaction.channel.send(f"⏰ {interaction.user.mention}, сработал будильник: **{text}**")
             
         except ValueError:
-            await interaction.response.send_message("❌ Ошибка формата! Используйте дату `ДД.ММ.ГГГГ` и время `ЧЧ:ММ`.", ephemeral=True)
-
+            await interaction.response.send_message("❌ Ошибка формата! Используйте время `ЧЧ:ММ` (например 09:05 или 15:30).", ephemeral=True)
     #afk command
     @app_commands.command(name="afk", description="💤 Уйти в AFK (вас нельзя будет тегать без причины)")
     @app_commands.describe(reason="Причина ухода")
