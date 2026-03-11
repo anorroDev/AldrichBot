@@ -181,7 +181,7 @@ class General(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
-        
+
     #verify command
     @app_commands.command(name="verify", description="Показать сообщение с кнопкой верификации")
     @app_commands.checks.has_permissions(administrator=True)
@@ -204,8 +204,28 @@ class General(commands.Cog):
         embed = discord.Embed(title=f"Аватар: {target.display_name}", color=discord.Color.blurple())
         embed.set_image(url=target.display_avatar.url)        
         await interaction.response.send_message(embed=embed) 
-    
-    
+    #serverinfo command
+    @app_commands.command(name="serverinfo", description="📊 Информация о сервере")
+    async def serverinfo(self, interaction: discord.Interaction) -> None:
+        guild = interaction.guild
+        embed = discord.Embed(title=f"Информация о сервере: {guild.name}", color=discord.Color.blue())
+        
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+            
+        embed.add_field(name="👑 Владелец", value=f"<@{guild.owner_id}>", inline=True)
+        embed.add_field(name="📅 Создан", value=f"<t:{int(guild.created_at.timestamp())}:D>", inline=True)
+        embed.add_field(name="👥 Участников", value=str(guild.member_count), inline=True)
+        
+        channels_text = f"📝 Текст: {len(guild.text_channels)}\n🔊 Голос: {len(guild.voice_channels)}"
+        embed.add_field(name="💬 Каналы", value=channels_text, inline=True)
+        embed.add_field(name="🎭 Ролей", value=str(len(guild.roles)), inline=True)
+        
+        boost_text = f"Уровень {guild.premium_tier} ({guild.premium_subscription_count} бустов)"
+        embed.add_field(name="🚀 Буст", value=boost_text, inline=True)
+        
+        await interaction.response.send_message(embed=embed)
+
     #giveaway command
 
     @app_commands.command(name="giveaway", description="🎁 Создать розыгрыш")
