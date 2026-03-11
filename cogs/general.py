@@ -103,9 +103,6 @@ class General(commands.Cog):
     def cog_unload(self):
         self.check_giveaways.cancel()
 
-    # ───────────────────────────────────────────
-    #               GENERAL
-    # ───────────────────────────────────────────
 
     @app_commands.command(name="ping", description="Посмотреть задержку бота.")
     async def ping(self, interaction: discord.Interaction) -> None:
@@ -184,7 +181,8 @@ class General(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
-
+        
+    #verify command
     @app_commands.command(name="verify", description="Показать сообщение с кнопкой верификации")
     @app_commands.checks.has_permissions(administrator=True)
     async def verify(self, interaction: discord.Interaction) -> None:
@@ -197,10 +195,18 @@ class General(commands.Cog):
             await interaction.response.send_message("❌ Эта команда доступна только администраторам!", ephemeral=True)
         else:
             await interaction.response.send_message(f"❌ Произошла ошибка: {error}", ephemeral=True)
-
-    # ───────────────────────────────────────────
-    #               GIVEAWAY
-    # ───────────────────────────────────────────
+    
+    #avatar command
+    @app_commands.command(name="avatar", description="🖼️ Посмотреть аватар пользователя")
+    @app_commands.describe(member="Пользователь (оставьте пустым, чтобы посмотреть свой)")
+    async def avatar(self, interaction: discord.Interaction, member: discord.Member | None = None) -> None:
+        target = member or interaction.user
+        embed = discord.Embed(title=f"Аватар: {target.display_name}", color=discord.Color.blurple())
+        embed.set_image(url=target.display_avatar.url)        
+        await interaction.response.send_message(embed=embed) 
+    
+    
+    #giveaway command
 
     @app_commands.command(name="giveaway", description="🎁 Создать розыгрыш")
     @app_commands.describe(
