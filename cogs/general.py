@@ -226,8 +226,75 @@ class General(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
 
-    #giveaway command
+    #remind command    
+    @app_commands.command(name="remind", description="⏳ Установить напоминание в чат")
+    @app_commands.describe(duration="Время (например: 10m, 2h)", text="О чем напомнить?")
+    async def remind(self, interaction: discord.Interaction, duration: str, text: str) -> None:
+        seconds = parse_duration(duration)
+        if not seconds:
+            return await interaction.response.send_message("❌ Неверный формат времени! Используйте `10m` (минуты), `2h` (часы).", ephemeral=True)
+        end_time = int(time.time()) + seconds
+        await interaction.response.send_message(f"✅ Напоминание установлено! Я позову вас <t:{end_time}:R>.")
+        await asyncio.sleep(seconds)        
+        await interaction.channel.send(f"🔔 {interaction.user.mention}, напоминание: **{text}**")
 
+    #afk command
+    @app_commands.command(name="afk", description="💤 Уйти в AFK (вас нельзя будет тегать без причины)")
+    @app_commands.describe(reason="Причина ухода")
+    async def afk(self, interaction: discord.Interaction, reason: str = "Отошел") -> None:
+        await self.bot.db.execute("CREATE TABLE IF NOT EXISTS afk (user_id INTEGER PRIMARY KEY, reason TEXT, time INTEGER)")        
+        await self.bot.db.execute("INSERT OR REPLACE INTO afk (user_id, reason, time) VALUES (?, ?, ?)", (interaction.user.id, reason, int(time.time())))
+        await self.bot.db.commit()        
+        await interaction.response.send_message(f"💤 {interaction.user.mention} ушел в AFK. Причина: **{reason}**")
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot: return        
+        try:
+            async with self.bot.db.execute("SELECT reason FROM afk WHERE user_id = ?", (message.author.id,)) as cursor:
+                row = await cursor.fetchone()
+            
+            if row:
+                await self.bot.db.execute("DELETE FROM afk WHERE user_id = ?", (message.author.id,))
+                await self.bot.db.commit()
+                msg = await message.channel.send(f"👋 С возвращением, {message.author.mention}! Ваш статус AFK снят.")
+                await msg.delete(delay=5)
+        except Exception:
+            pass
+            
+        if message.mentions:
+            for user in message.mentions:
+                try:
+                    async with self.bot.db.execute("SELECT reason, time FROM afk WHERE user_id = ?", (user.id,)) as cursor:
+                        row = await cursor.fetchone()
+                        
+                    if row:
+                        reason, afk_time = row
+                        await message.channel.send(f"💤 **{user.display_name}** сейчас в AFK (<t:{afk_time}:R>): {reason}", delete_after=10)
+                except Exception:
+                    pass    
+
+    #----------------------------------------------
+    #               Fan commands
+    #----------------------------------------------
+
+    #roll command
+    @app_commands.command(name="roll", description="🎲 Бросить кубик (получить случайное число)")
+    @app_commands.describe(maximum="Максимальное число (по умолчанию 100)")
+    async def roll(self, interaction: discord.Interaction, maximum: int = 100) -> None:
+        if maximum < 2: maximum = 2
+        result = random.randint(1, maximum)
+        await interaction.response.send_message(f"🎲 {interaction.user.mention} бросает кубики и выбивает **{result}** (из {maximum})!")
+
+    #flip command
+    @app_commands.command(name="flip", description="🪙 Подкинуть монетку (Орел или Решка)")
+    async def flip(self, interaction: discord.Interaction) -> None:
+        result = random.choice(["🦅 Орел", "🪙 Решка"])
+        await interaction.response.send_message(f"{interaction.user.mention} подкидывает монетку... Выпадает: **{result}**!")
+
+    #----------------------------------------------
+    #               giveaway commands
+    #----------------------------------------------
     @app_commands.command(name="giveaway", description="🎁 Создать розыгрыш")
     @app_commands.describe(
         duration="Время (например: 10m, 2h, 1d)",
