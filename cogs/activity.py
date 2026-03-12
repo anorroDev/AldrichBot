@@ -2,68 +2,265 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-SHOP_ITEMS = [
-    {
-        "value": 1477601614171738193, # Обязательно замени на ID реальной роли на твоем сервере!
-        "price": 50,
-        "description": "Тестовая роль для проверки работы магазина. Не имеет особых привилегий.",
-        "emoji": "🧪"
-    }
-]
+SHOP_CATEGORIES = {
+    "cosmetic": {
+        "title": "🎨 Косметика",
+        "description": "Постоянные косметические награды за АП.",
+        "color": discord.Color.fuchsia(),
+        "items": [
+            {
+                "id": "cosmetic_role_1",
+                "name": "Эмиссар Пепла",
+                "emoji": "🎖️",
+                "price": 350,
+                "description": "Постоянная косметическая роль в профиле сервера.",
+                "kind": "role",
+                "role_id": 1477601614171738193,
+                "available": False,
+            },
+            {
+                "id": "cosmetic_role_2",
+                "name": "Хранитель Ночи",
+                "emoji": "🌙",
+                "price": 900,
+                "description": "Редкая постоянная роль для активных участников.",
+                "kind": "role",
+                "role_id": 1477601614171738193,
+                "available": True,
+            },
+        ],
+    },
+    "game": {
+        "title": "🎮 Товары Для Игры",
+        "description": "Расходуемые и полезные предметы для RPG-части.",
+        "color": discord.Color.orange(),
+        "items": [
+            {
+                "id": "game_flask",
+                "name": "Фляга Бодрости",
+                "emoji": "🧪",
+                "price": 120,
+                "description": "Добавляет 1 Флягу Бодрости в инвентарь.",
+                "kind": "game_item",
+                "item_name": "flask",
+                "amount": 1,
+                "available": True,
+            },
+            {
+                "id": "game_ring",
+                "name": "Кольцо Жертвенности",
+                "emoji": "💍",
+                "price": 300,
+                "description": "Добавляет 1 Кольцо Жертвенности в инвентарь.",
+                "kind": "game_item",
+                "item_name": "ring",
+                "amount": 1,
+                "available": True,
+            },
+        ],
+    },
+    "special": {
+        "title": "✨ Особые",
+        "description": "Экспериментальные фичи и будущие интересные товары.",
+        "color": discord.Color.blurple(),
+        "items": [
+            {
+                "id": "special_profile_title",
+                "name": "Персональный Титул",
+                "emoji": "🪪",
+                "price": 1500,
+                "description": "Скоро: уникальный титул для карточки профиля.",
+                "kind": "preview",
+                "available": False,
+            },
+            {
+                "id": "special_lucky_ticket",
+                "name": "Билет Фортуны",
+                "emoji": "🎟️",
+                "price": 750,
+                "description": "Скоро: спец-билет с шансом на редкую награду.",
+                "kind": "preview",
+                "available": False,
+            },
+        ],
+    },
+}
 
-class ShopSelect(discord.ui.Select):
-    def __init__(self, bot, guild: discord.Guild):
+
+class ShopCategorySelect(discord.ui.Select):
+    def __init__(self, bot: commands.Bot, guild: discord.Guild, category_key: str):
         self.bot = bot
+        self.guild = guild
+        self.category_key = category_key
+
+        category = SHOP_CATEGORIES[category_key]
         options = []
-        for item in SHOP_ITEMS:
-            role = guild.get_role(int(item["value"]))
-            role_name = role.name if role else f"Удаленная роль ({item['value']})"
+        for item in category["items"]:
+            label = item["name"][:100]
+            status = "Скоро" if not item.get("available", True) else f"{item['price']} АП"
             options.append(
                 discord.SelectOption(
-                    label=role_name,
-                    description=f"Цена: {item['price']} АП",
-                    value=str(item["value"]),
-                    emoji=item["emoji"]
+                    label=label,
+                    description=f"Цена: {status}"[:100],
+                    value=item["id"],
+                    emoji=item.get("emoji", "🛒"),
                 )
             )
-        super().__init__(placeholder="Выберите роль для покупки...", min_values=1, max_values=1, options=options)
+
+        placeholder = f"Выберите товар: {category['title']}"
+        super().__init__(placeholder=placeholder[:150], min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        role_id = int(self.values[0])
-        item = next((x for x in SHOP_ITEMS if x["value"] == role_id), None)
-        
-        if not item: return await interaction.response.send_message("❌ Ошибка: Товар не найден.", ephemeral=True)
+        if not self.view or interaction.user.id != self.view.owner_id:
+            return await interaction.response.send_message("❌ Это не ваш магазин. Откройте /shop для себя.", ephemeral=True)
 
-        price = item["price"]
-        role = interaction.guild.get_role(role_id)
-        
-        if not role: return await interaction.response.send_message("❌ Ошибка: Роль не найдена на сервере.", ephemeral=True)
-        if role in interaction.user.roles: return await interaction.response.send_message("❌ У вас уже есть эта роль!", ephemeral=True)
+        category = SHOP_CATEGORIES[self.category_key]
+        item = next((x for x in category["items"] if x["id"] == self.values[0]), None)
+
+        if not item:
+            return await interaction.response.send_message("❌ Ошибка: товар не найден.", ephemeral=True)
+
+        if not item.get("available", True):
+            return await interaction.response.send_message(
+                f"🚧 Товар **{item['name']}** пока недоступен. Это заготовка под будущие фичи.",
+                ephemeral=True,
+            )
 
         async with self.bot.db.execute("SELECT activity_points FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
             row = await cursor.fetchone()
-        
-        # Если профиля нет, row будет None. Считаем, что баланс 0.
+
         balance = row[0] if row else 0
+        price = item["price"]
 
         if balance < price:
-            return await interaction.response.send_message(f"❌ Недостаточно Очков Активности! Нужно: `{price}` АП, у вас: `{balance}` АП.", ephemeral=True)
+            return await interaction.response.send_message(
+                f"❌ Недостаточно АП! Нужно: `{price}`, у вас: `{balance}`.",
+                ephemeral=True,
+            )
 
-        try:
-            await interaction.user.add_roles(role, reason="Покупка в магазине ролей")
-        except discord.Forbidden:
-            return await interaction.response.send_message("❌ У меня нет прав выдать эту роль. Моя роль должна быть ВЫШЕ покупаемой!", ephemeral=True)
+        if item["kind"] == "role":
+            role = self.guild.get_role(int(item["role_id"]))
+            if not role:
+                return await interaction.response.send_message("❌ Роль не найдена на сервере.", ephemeral=True)
+            if role in interaction.user.roles:
+                return await interaction.response.send_message("❌ У вас уже есть эта роль.", ephemeral=True)
 
-        await self.bot.db.execute("UPDATE users SET activity_points = activity_points - ? WHERE id = ?", (price, interaction.user.id))
-        await self.bot.db.commit()
+            try:
+                await interaction.user.add_roles(role, reason="Покупка в магазине АП")
+            except discord.Forbidden:
+                return await interaction.response.send_message(
+                    "❌ У меня нет прав выдать эту роль. Проверьте порядок ролей.",
+                    ephemeral=True,
+                )
 
-        await interaction.response.send_message(f"🎉 Вы успешно купили роль {role.mention} за `{price}` АП!", ephemeral=True)
+            await self.bot.db.execute("UPDATE users SET activity_points = activity_points - ? WHERE id = ?", (price, interaction.user.id))
+            await self.bot.db.commit()
+            return await interaction.response.send_message(
+                f"✅ Покупка успешна! Вы получили роль {role.mention} за `{price}` АП.",
+                ephemeral=True,
+            )
+
+        if item["kind"] == "game_item":
+            amount = int(item.get("amount", 1))
+            item_name = item["item_name"]
+
+            await self.bot.db.execute(
+                "INSERT INTO inventory (user_id, item_name, amount, equipped) VALUES (?, ?, ?, 0) "
+                "ON CONFLICT(user_id, item_name) DO UPDATE SET amount = amount + ?",
+                (interaction.user.id, item_name, amount, amount),
+            )
+            await self.bot.db.execute("UPDATE users SET activity_points = activity_points - ? WHERE id = ?", (price, interaction.user.id))
+            await self.bot.db.commit()
+            return await interaction.response.send_message(
+                f"✅ Покупка успешна! В инвентарь добавлено: **{item['name']} x{amount}** за `{price}` АП.",
+                ephemeral=True,
+            )
+
+        return await interaction.response.send_message("❌ Этот тип товара пока не поддерживается.", ephemeral=True)
 
 
-class ShopView(discord.ui.View):
-    def __init__(self, bot, guild: discord.Guild):
-        super().__init__(timeout=None)
-        self.add_item(ShopSelect(bot, guild))
+class ShopCategoryView(discord.ui.View):
+    def __init__(self, bot: commands.Bot, guild: discord.Guild, owner_id: int, category_key: str = "cosmetic"):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.guild = guild
+        self.owner_id = owner_id
+        self.category_key = category_key
+        self._rebuild_components()
+        self._apply_button_styles()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message("❌ Это не ваш магазин. Откройте /shop для себя.", ephemeral=True)
+            return False
+        return True
+
+    def _rebuild_components(self) -> None:
+        # Не очищаем все элементы, иначе пропадут кнопки категорий.
+        # Удаляем только старый select и добавляем новый для текущей категории.
+        for child in list(self.children):
+            if isinstance(child, ShopCategorySelect):
+                self.remove_item(child)
+        self.add_item(ShopCategorySelect(self.bot, self.guild, self.category_key))
+
+    def _apply_button_styles(self) -> None:
+        mapping = {
+            "cosmetic": self.btn_cosmetic,
+            "game": self.btn_game,
+            "special": self.btn_special,
+        }
+        for key, button in mapping.items():
+            button.style = discord.ButtonStyle.primary if key == self.category_key else discord.ButtonStyle.secondary
+
+    async def _get_balance(self, user_id: int) -> int:
+        async with self.bot.db.execute("SELECT activity_points FROM users WHERE id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+        return row[0] if row and row[0] else 0
+
+    async def _get_embed(self) -> discord.Embed:
+        category = SHOP_CATEGORIES[self.category_key]
+        embed = discord.Embed(
+            title=f"🛒 Магазин АП • {category['title']}",
+            description=f"{category['description']}\n==========",
+            color=category["color"],
+        )
+
+        for item in category["items"]:
+            state = "🚧 Скоро" if not item.get("available", True) else f"{item['price']} АП"
+            embed.add_field(
+                name=f"{item.get('emoji', '🛒')} {item['name']}",
+                value=f"Цена: `{state}`\n*{item['description']}*",
+                inline=False,
+            )
+
+        balance = await self._get_balance(self.owner_id)
+        embed.set_footer(text=f"Ваш баланс: {balance} АП • Выберите категорию кнопками ниже.")
+        return embed
+
+    async def _switch_category(self, interaction: discord.Interaction, category_key: str) -> None:
+        if category_key == self.category_key:
+            return await interaction.response.defer()
+
+        self.category_key = category_key
+        self._rebuild_components()
+        self._apply_button_styles()
+        await interaction.response.edit_message(embed=await self._get_embed(), view=self)
+
+    async def on_timeout(self) -> None:
+        for child in self.children:
+            child.disabled = True
+
+    @discord.ui.button(label="🎨 Косметика", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_cosmetic(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch_category(interaction, "cosmetic")
+
+    @discord.ui.button(label="🎮 Игровые", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_game(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch_category(interaction, "game")
+
+    @discord.ui.button(label="✨ Особые", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_special(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch_category(interaction, "special")
 
 
 class Activity(commands.Cog):
@@ -110,19 +307,10 @@ class Activity(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
 
-    @app_commands.command(name="shop", description="🛒 Открыть магазин ролей за Очки Активности")
+    @app_commands.command(name="shop", description="🛒 Открыть магазин за Очки Активности")
     async def shop(self, interaction: discord.Interaction) -> None:
-        embed = discord.Embed(
-            description="# 🛒 Магазин Ролей\nЗдесь вы можете обменять Очки Активности (АП) на эксклюзивные роли.\n==========\n",
-            color=discord.Color.green()
-        )
-        for item in SHOP_ITEMS:
-            role = interaction.guild.get_role(int(item["value"]))
-            role_name = role.name if role else "Неизвестная роль"
-            embed.add_field(name=f"{item['emoji']} {role_name}", value=f"Цена: `{item['price']}` АП\n*{item['description']}*", inline=False)
-            
-        embed.set_footer(text="Выберите роль в меню ниже, чтобы совершить покупку!")
-        await interaction.response.send_message(embed=embed, view=ShopView(self.bot, interaction.guild))
+        view = ShopCategoryView(self.bot, interaction.guild, owner_id=interaction.user.id, category_key="cosmetic")
+        await interaction.response.send_message(embed=await view._get_embed(), view=view)
 
 
     # ---------------------------------------------- Административные команды ----------------------------------------------
