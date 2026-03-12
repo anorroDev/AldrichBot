@@ -4,7 +4,7 @@ from discord import app_commands
 
 SHOP_ITEMS = [
     {
-        "value": 1477601614171738193,
+        "value": 1477601614171738193, # Обязательно замени на ID реальной роли на твоем сервере!
         "price": 50,
         "description": "Тестовая роль для проверки работы магазина. Не имеет особых привилегий.",
         "emoji": "🧪"
@@ -43,7 +43,8 @@ class ShopSelect(discord.ui.Select):
         async with self.bot.db.execute("SELECT activity_points FROM users WHERE id = ?", (interaction.user.id,)) as cursor:
             row = await cursor.fetchone()
         
-        balance = row[0] if row and row[0] else 0
+        # Если профиля нет, row будет None. Считаем, что баланс 0.
+        balance = row[0] if row else 0
 
         if balance < price:
             return await interaction.response.send_message(f"❌ Недостаточно Очков Активности! Нужно: `{price}` АП, у вас: `{balance}` АП.", ephemeral=True)
@@ -58,6 +59,7 @@ class ShopSelect(discord.ui.Select):
 
         await interaction.response.send_message(f"🎉 Вы успешно купили роль {role.mention} за `{price}` АП!", ephemeral=True)
 
+
 class ShopView(discord.ui.View):
     def __init__(self, bot, guild: discord.Guild):
         super().__init__(timeout=None)
@@ -68,14 +70,14 @@ class Activity(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="leaderboard", description="Посмотреть доску почета (Топ по Уровню и Активности)")
+    @app_commands.command(name="leaderboard", description="🏆 Посмотреть доску почета (Топ по Уровню и Активности)")
     async def leaderboard(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
             description="## 🏆 Доска почета сервера\n==========\n", 
             color=discord.Color.gold()
         )
 
-        async with self.bot.db.execute("SELECT id, level FROM users ORDER BY level DESC LIMIT 5") as cursor:
+        async with self.bot.db.execute("SELECT id, level FROM users WHERE level IS NOT NULL ORDER BY level DESC LIMIT 5") as cursor:
             level_rows = await cursor.fetchall()
 
         level_text = ""
@@ -102,10 +104,11 @@ class Activity(commands.Cog):
 
         ap_text += "\n=========="
         
-        embed.add_field(name="🏆 Топ активных", value=ap_text, inline=False)
+        embed.add_field(name="✨ Топ активных", value=ap_text, inline=False)
         embed.set_footer(text="Будьте активней и прокачивайте уровень, чтобы попасть сюда!")
 
         await interaction.response.send_message(embed=embed)
+
 
     @app_commands.command(name="shop", description="🛒 Открыть магазин ролей за Очки Активности")
     async def shop(self, interaction: discord.Interaction) -> None:
@@ -121,14 +124,12 @@ class Activity(commands.Cog):
         embed.set_footer(text="Выберите роль в меню ниже, чтобы совершить покупку!")
         await interaction.response.send_message(embed=embed, view=ShopView(self.bot, interaction.guild))
 
+
     # ---------------------------------------------- Административные команды ----------------------------------------------
-    @app_commands.command(name="change_balance", description="Изменить баланс пользователя")
+    
+    @app_commands.command(name="change_balance", description="🛡️ [АДМИН] Изменить баланс душ пользователя")
     @app_commands.checks.has_permissions(administrator=True) 
-    @app_commands.describe(
-        action="Что сделать с балансом?", 
-        member="Выберите пользователя", 
-        amount="Укажите сумму"
-    )
+    @app_commands.describe(action="Что сделать с балансом?", member="Выберите пользователя", amount="Укажите сумму")
     @app_commands.choices(action=[
         app_commands.Choice(name="✏️ Установить (Set)", value="set"),
         app_commands.Choice(name="➕ Добавить (Add)", value="add"),
@@ -138,7 +139,11 @@ class Activity(commands.Cog):
         async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (member.id,)) as cursor:
             row = await cursor.fetchone()
         
-        current_balance = row[0] if row else 0 
+        # Защита от создания пустых профилей
+        if not row:
+            return await interaction.response.send_message(f"❌ У {member.mention} еще нет профиля! Пусть сначала напишет `/game`.", ephemeral=True)
+            
+        current_balance = row[0]
         
         if action.value == "set":
             new_balance = amount
@@ -151,11 +156,11 @@ class Activity(commands.Cog):
             action_text = "уменьшен на"
             if new_balance < 0: new_balance = 0 
                 
-        query = "INSERT INTO users (id, balance) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET balance = ?"
-        await self.bot.db.execute(query, (member.id, new_balance, new_balance))
+        await self.bot.db.execute("UPDATE users SET balance = ? WHERE id = ?", (new_balance, member.id))
         await self.bot.db.commit()
 
         await interaction.response.send_message(f"💰 Баланс **{member.display_name}** {action_text} `{amount}` душ. \n💰 Текущий счет: `{new_balance}`", ephemeral=True)
+
 
     @change_balance.error
     async def change_balance_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
@@ -165,23 +170,24 @@ class Activity(commands.Cog):
             print(f"[ОШИБКА В ИЗМЕНЕНИИ БАЛАНСА]: {error}") 
             await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
-    @app_commands.command(name="give_activity", description="Наградить пользователя Очками Активности")
+
+    @app_commands.command(name="give_activity", description="🛡️ [АДМИН] Наградить пользователя Очками Активности")
     @app_commands.describe(member="Кого наградить?", amount="Сколько очков дать?")
     @app_commands.checks.has_permissions(administrator=True)
     async def give_activity(self, interaction: discord.Interaction, member: discord.Member, amount: int) -> None:
         if amount <= 0: return await interaction.response.send_message("❌ Количество очков должно быть больше нуля!", ephemeral=True)
 
-        query = """
-            INSERT INTO users (id, balance, activity_points, total_activity_points) 
-            VALUES (?, 0, ?, ?) 
-            ON CONFLICT(id) DO UPDATE SET 
-            activity_points = activity_points + ?,
-            total_activity_points = total_activity_points + ?
-        """
-        await self.bot.db.execute(query, (member.id, amount, amount, amount, amount))
+        async with self.bot.db.execute("SELECT activity_points FROM users WHERE id = ?", (member.id,)) as cursor:
+            row = await cursor.fetchone()
+            
+        if not row:
+            return await interaction.response.send_message(f"❌ У {member.mention} еще нет профиля! Пусть сначала напишет `/game`.", ephemeral=True)
+
+        query = "UPDATE users SET activity_points = activity_points + ?, total_activity_points = total_activity_points + ? WHERE id = ?"
+        await self.bot.db.execute(query, (amount, amount, member.id))
         await self.bot.db.commit()
 
-        await interaction.response.send_message(f"🏆 Администратор наградил {member.mention} Очками Активности в размере: `{amount}`")
+        await interaction.response.send_message(f"🏆 Администратор наградил {member.mention} Очками Активности в размере: `{amount}` АП!")
 
 
 async def setup(bot: commands.Bot) -> None:
