@@ -13,7 +13,7 @@ SHOP_CATEGORIES = {
                 "name": "Эмиссар Пепла",
                 "emoji": "🎖️",
                 "price": 350,
-                "description": "Постоянная косметическая роль в профиле сервера.",
+                "description": "Косметическая роль в профиле сервера.",
                 "kind": "role",
                 "role_id": 1477601614171738193,
                 "available": False,

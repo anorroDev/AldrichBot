@@ -34,6 +34,9 @@ ACHIEVEMENTS = {
         {"id": "lvl_100", "name": "Истинный Владыка", "desc": "Достигните 100 уровня у костра.", "target": 100, "type": "level", "reward_text": "2500 АП + Роль Лорд Пепла", "reward_ap": 2500, "reward_role": 1480303132369092759},
         {"id": "souls_10000", "name": "Лорд Пепла", "desc": "Накопите 10 000 душ.", "target": 10000, "type": "souls", "reward_text": "250 АП", "reward_ap": 100},
         {"id": "souls_100000", "name": "Пожиратель Богов", "desc": "Накопите 100 000 душ.", "target": 100000, "type": "souls", "reward_text": "1500 АП + Роль", "reward_ap": 1500, "reward_role": 1480303511219732601}
+    ],
+    "secret": [
+        {"id": "secret_lvl_50", "name": "Пламя не угаснет", "desc": "Достигните 50 уровня у костра.", "target": 50, "type": "level", "reward_text": "500 АП", "reward_ap": 500}
     ]
 }
 
@@ -42,6 +45,28 @@ class AchievementUI(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
         self.user = user
+        self.category_key = "activity"
+        self._apply_button_styles()
+
+    def _apply_button_styles(self):
+        mapping = {
+            "activity": self.btn_activity,
+            "game": self.btn_game,
+            "secret": self.btn_secret,
+        }
+        for key, button in mapping.items():
+            button.style = discord.ButtonStyle.primary if key == self.category_key else discord.ButtonStyle.secondary
+
+    async def _switch_category(self, interaction: discord.Interaction, category_key: str):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message("❌ Это не ваша статистика!", ephemeral=True)
+        if category_key == self.category_key:
+            return await interaction.response.defer()
+
+        self.category_key = category_key
+        self._apply_button_styles()
+        embed = await self.generate_embed(category_key)
+        await interaction.response.edit_message(embed=embed, view=self)
 
     async def generate_embed(self, category: str):
         async with self.bot.db.execute("SELECT message_count, voice_time, level, total_souls_farmed FROM users WHERE id = ?", (self.user.id,)) as cursor:
@@ -55,7 +80,7 @@ class AchievementUI(discord.ui.View):
         async with self.bot.db.execute("SELECT achievement_id FROM user_achievements WHERE user_id = ?", (self.user.id,)) as cursor:
             earned = [r[0] for r in await cursor.fetchall()]
 
-        cat_names = {"activity": "💬 Активность", "game": "⚔️ Игра"}
+        cat_names = {"activity": "💬 Активность", "game": "⚔️ Игра", "secret": "🕯️ Секретные"}
         embed = discord.Embed(
             description=f"# 🏆 Достижения: {cat_names.get(category, '')}\nВыполняйте условия, чтобы получать уникальные награды.\n Награды включают в себя уникальные роли,\n описание которых вы можете прочитать в #info\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n", 
             color=discord.Color.gold()
@@ -64,6 +89,7 @@ class AchievementUI(discord.ui.View):
 
         for ach in ACHIEVEMENTS[category]:
             is_earned = ach["id"] in earned
+            is_secret_hidden = category == "secret" and not is_earned
             
             if ach["type"] == "messages":
                 current = msgs
@@ -82,29 +108,40 @@ class AchievementUI(discord.ui.View):
 
             if is_earned:
                 progress_text = f"`[{'▰' * 8}] 100%` • ✅ Выполнено!"
+            elif is_secret_hidden:
+                progress_text = "`[????????] ???%` • ❓ Секретно"
             else:
                 progress_text = f"`{get_progress_bar(current, ach['target'])}` • {display_current}"
 
             status_icon = "🏅" if is_earned else "🔒"
+
+            ach_name = ach["name"]
+            ach_desc = ach["desc"]
+            ach_reward = ach["reward_text"]
+            if is_secret_hidden:
+                ach_name = "Секретное достижение"
+                ach_desc = "Условие этого достижения будет раскрыто после получения."
+                ach_reward = "???"
+
             embed.add_field(
-                name=f"{status_icon} **{ach['name']}**", 
-                value=f"*{ach['desc']}*\n🎁 Награда: `{ach['reward_text']}`\nПрогресс: {progress_text}", 
+                name=f"{status_icon} **{ach_name}**", 
+                value=f"*{ach_desc}*\n🎁 Награда: `{ach_reward}`\nПрогресс: {progress_text}", 
                 inline=False
             )
             
         return embed
 
-    @discord.ui.button(label="💬 Активность", style=discord.ButtonStyle.primary, custom_id="ach_activity")
+    @discord.ui.button(label="💬 Активность", style=discord.ButtonStyle.primary, custom_id="ach_activity", row=1)
     async def btn_activity(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user.id: return await interaction.response.send_message("❌ Это не ваша статистика!", ephemeral=True)
-        embed = await self.generate_embed("activity")
-        await interaction.response.edit_message(embed=embed, view=self)
+        await self._switch_category(interaction, "activity")
 
-    @discord.ui.button(label="⚔️ Игра", style=discord.ButtonStyle.danger, custom_id="ach_game")
+    @discord.ui.button(label="⚔️ Игра", style=discord.ButtonStyle.secondary, custom_id="ach_game", row=1)
     async def btn_game(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user.id: return await interaction.response.send_message("❌ Это не ваша статистика!", ephemeral=True)
-        embed = await self.generate_embed("game")
-        await interaction.response.edit_message(embed=embed, view=self)
+        await self._switch_category(interaction, "game")
+
+    @discord.ui.button(label="🕯️ Секретные", style=discord.ButtonStyle.secondary, custom_id="ach_secret", row=1)
+    async def btn_secret(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch_category(interaction, "secret")
 
 class Achievements(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
