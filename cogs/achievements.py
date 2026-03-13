@@ -36,7 +36,12 @@ ACHIEVEMENTS = {
         {"id": "souls_100000", "name": "Пожиратель Богов", "desc": "Накопите 100 000 душ.", "target": 100000, "type": "souls", "reward_text": "1500 АП + Роль", "reward_ap": 1500, "reward_role": 1480303511219732601}
     ],
     "secret": [
-        {"id": "secret_lvl_50", "name": "Пламя не угаснет", "desc": "Достигните 50 уровня у костра.", "target": 50, "type": "level", "reward_text": "500 АП", "reward_ap": 500}
+        {"id": "secret_msg_100", "name": "Тень Чата", "desc": "Напишите 100 сообщений в чатах.", "target": 100, "type": "messages", "reward_text": "400 АП", "reward_ap": 400},
+        {"id": "secret_voice_3h", "name": "Ночной Страж", "desc": "Проведите 3 часа в голосовых каналах.", "target": 10800, "type": "voice", "reward_text": "200 АП", "reward_ap": 200},
+        {"id": "secret_hunts_50", "name": "Пепел Ветерана", "desc": "Совершите 50 успешных охот.", "target": 50, "type": "hunts", "reward_text": "500 АП", "reward_ap": 500},
+        {"id": "secret_balance_50000", "name": "Скупой Лорд", "desc": "Накопите 50 000 душ на балансе.", "target": 50000, "type": "balance_souls", "reward_text": "400 АП", "reward_ap": 400},
+        {"id": "secret_rings_4", "name": "Коллекционер Реликвий", "desc": "Экипируйте 4 Кольца Жертвенности одновременно.", "target": 4, "type": "equipped_rings", "reward_text": "250 АП", "reward_ap": 250},
+        {"id": "secret_lvl_67", "name": "SixSeven Момент", "desc": "Достигните 67 уровня у костра.", "target": 67, "type": "level", "reward_text": "670 АП + Роль ", "reward_ap": 670, "reward_role": 1482091132467806288}
     ]
 }
 
@@ -69,13 +74,19 @@ class AchievementUI(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def generate_embed(self, category: str):
-        async with self.bot.db.execute("SELECT message_count, voice_time, level, total_souls_farmed FROM users WHERE id = ?", (self.user.id,)) as cursor:
+        async with self.bot.db.execute("SELECT message_count, voice_time, level, total_souls_farmed, balance, successful_hunts FROM users WHERE id = ?", (self.user.id,)) as cursor:
             row = await cursor.fetchone()
             
         msgs = row[0] if row and row[0] else 0
         voice = row[1] if row and row[1] else 0
         level = row[2] if row and row[2] else 1
         souls = row[3] if row and row[3] else 0
+        balance = row[4] if row and row[4] else 0
+        hunts = row[5] if row and row[5] else 0
+
+        async with self.bot.db.execute("SELECT equipped FROM inventory WHERE user_id = ? AND item_name = 'ring'", (self.user.id,)) as cursor:
+            ring_row = await cursor.fetchone()
+        equipped_rings = ring_row[0] if ring_row and ring_row[0] else 0
 
         async with self.bot.db.execute("SELECT achievement_id FROM user_achievements WHERE user_id = ?", (self.user.id,)) as cursor:
             earned = [r[0] for r in await cursor.fetchall()]
@@ -103,6 +114,15 @@ class AchievementUI(discord.ui.View):
             elif ach["type"] == "souls":
                 current = souls
                 display_current = f"{souls} / {ach['target']}"
+            elif ach["type"] == "hunts":
+                current = hunts
+                display_current = f"{hunts} / {ach['target']}"
+            elif ach["type"] == "balance_souls":
+                current = balance
+                display_current = f"{balance} / {ach['target']}"
+            elif ach["type"] == "equipped_rings":
+                current = equipped_rings
+                display_current = f"{equipped_rings} / {ach['target']}"
             else:
                 current, display_current = 0, "0"
 
@@ -150,10 +170,14 @@ class Achievements(commands.Cog):
     async def check_achievements(self, member: discord.Member, channel: discord.TextChannel = None):
         if member.bot: return
         
-        async with self.bot.db.execute("SELECT message_count, voice_time, level, total_souls_farmed FROM users WHERE id = ?", (member.id,)) as cursor:
+        async with self.bot.db.execute("SELECT message_count, voice_time, level, total_souls_farmed, balance, successful_hunts FROM users WHERE id = ?", (member.id,)) as cursor:
             row = await cursor.fetchone()
         if not row: return
-        msgs, voice, level, souls = row
+        msgs, voice, level, souls, balance, hunts = row
+
+        async with self.bot.db.execute("SELECT equipped FROM inventory WHERE user_id = ? AND item_name = 'ring'", (member.id,)) as cursor:
+            ring_row = await cursor.fetchone()
+        equipped_rings = ring_row[0] if ring_row and ring_row[0] else 0
 
         async with self.bot.db.execute("SELECT achievement_id FROM user_achievements WHERE user_id = ?", (member.id,)) as cursor:
             earned = [r[0] for r in await cursor.fetchall()]
@@ -172,6 +196,9 @@ class Achievements(commands.Cog):
                 elif ach["type"] == "voice" and voice >= ach["target"]: is_completed = True
                 elif ach["type"] == "level" and level >= ach["target"]: is_completed = True
                 elif ach["type"] == "souls" and souls >= ach["target"]: is_completed = True
+                elif ach["type"] == "hunts" and hunts >= ach["target"]: is_completed = True
+                elif ach["type"] == "balance_souls" and balance >= ach["target"]: is_completed = True
+                elif ach["type"] == "equipped_rings" and equipped_rings >= ach["target"]: is_completed = True
 
                 if is_completed:
                     new_achievements.append(ach)
