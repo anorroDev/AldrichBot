@@ -129,7 +129,7 @@ class AchievementUI(discord.ui.View):
             if is_earned:
                 progress_text = f"`[{'▰' * 8}] 100%` • ✅ Выполнено!"
             elif is_secret_hidden:
-                progress_text = "`[????????] ???%` • ❓ Секретно"
+                progress_text = "`[????????] ???%` • ❓"
             else:
                 progress_text = f"`{get_progress_bar(current, ach['target'])}` • {display_current}"
 
