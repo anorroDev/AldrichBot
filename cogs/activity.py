@@ -26,7 +26,7 @@ SHOP_CATEGORIES = {
                 "description": "Редкая постоянная роль для активных участников.",
                 "kind": "role",
                 "role_id": 1477601614171738193,
-                "available": True,
+                "available": False,
             },
         ],
     },
@@ -39,12 +39,12 @@ SHOP_CATEGORIES = {
                 "id": "game_flask",
                 "name": "Фляга Бодрости",
                 "emoji": "🧪",
-                "price": 120,
+                "price": 100,
                 "description": "Добавляет 1 Флягу Бодрости в инвентарь.",
                 "kind": "game_item",
                 "item_name": "flask",
                 "amount": 1,
-                "available": True,
+                "available": False,
             },
             {
                 "id": "game_ring",
@@ -55,7 +55,7 @@ SHOP_CATEGORIES = {
                 "kind": "game_item",
                 "item_name": "ring",
                 "amount": 1,
-                "available": True,
+                "available": False,
             },
         ],
     },
@@ -74,11 +74,11 @@ SHOP_CATEGORIES = {
                 "available": False,
             },
             {
-                "id": "special_lucky_ticket",
-                "name": "Билет Фортуны",
-                "emoji": "🎟️",
+                "id": "soon",
+                "name": "Скоро",
+                "emoji": "🚧",
                 "price": 750,
-                "description": "Скоро: спец-билет с шансом на редкую награду.",
+                "description": "Скоро:.",
                 "kind": "preview",
                 "available": False,
             },
@@ -122,7 +122,7 @@ class ShopCategorySelect(discord.ui.Select):
 
         if not item.get("available", True):
             return await interaction.response.send_message(
-                f"🚧 Товар **{item['name']}** пока недоступен. Это заготовка под будущие фичи.",
+                f"🚧 Товар **{item['name']}** пока недоступен.",
                 ephemeral=True,
             )
 
@@ -196,8 +196,7 @@ class ShopCategoryView(discord.ui.View):
         return True
 
     def _rebuild_components(self) -> None:
-        # Не очищаем все элементы, иначе пропадут кнопки категорий.
-        # Удаляем только старый select и добавляем новый для текущей категории.
+
         for child in list(self.children):
             if isinstance(child, ShopCategorySelect):
                 self.remove_item(child)

@@ -102,7 +102,7 @@ class MyBot(commands.Bot):
 
     async def on_ready(self):
         logger.info('Logged in as %s (ID: %s)', self.user, self.user.id)
-        logger.info('------------------------------------')
+        logger.info('--------------------------------------------------------------')
 
 bot = MyBot()
 
