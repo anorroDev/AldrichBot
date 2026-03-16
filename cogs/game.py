@@ -674,29 +674,5 @@ class Game(commands.Cog):
         await self.bot.db.commit()
         await interaction.response.send_message(f"✅ Вы выдали **{amount} шт. {item_name.name}** игроку {member.mention}.", ephemeral=True)
 
-    @app_commands.command(name="stats", description="📊 Серверная статистика: сообщения, войс, охоты за всё время")
-    async def stats(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        async with self.bot.db.execute("SELECT COUNT(*) FROM users WHERE char_name IS NOT NULL") as cursor:
-            chars = (await cursor.fetchone())[0]
-        async with self.bot.db.execute("SELECT SUM(message_count), SUM(voice_time), SUM(successful_hunts), SUM(total_souls_farmed) FROM users") as cursor:
-            row = await cursor.fetchone()
-        total_msgs  = row[0] or 0
-        total_voice = row[1] or 0
-        total_hunts = row[2] or 0
-        total_souls = row[3] or 0
-
-        embed = discord.Embed(
-            title="📊 Статистика сервера",
-            description="Суммарная активность всех участников за всё время.",
-            color=discord.Color.blurple()
-        )
-        embed.add_field(name="🎮 Персонажей создано",   value=f"**{chars:,}**",          inline=True)
-        embed.add_field(name="💬 Сообщений отправлено", value=f"**{total_msgs:,}**",   inline=True)
-        embed.add_field(name="🎤 Часов в войсе",          value=f"**{round(total_voice / 3600, 1):,}**", inline=True)
-        embed.add_field(name="⚔️ Успешных охот",        value=f"**{total_hunts:,}**",  inline=True)
-        embed.add_field(name="👻 Душ добыто всего",      value=f"**{total_souls:,}**",  inline=True)
-        await interaction.followup.send(embed=embed)
-
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Game(bot))
