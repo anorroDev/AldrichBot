@@ -91,6 +91,14 @@ class HuntAgainUI(discord.ui.View):
         embed = await self.farm_view.main_view.get_main_embed()
         await interaction.response.edit_message(embed=embed, view=self.farm_view.main_view)
 
+_MERCHANT_BUTTON_ITEMS = {
+    "btn_ring":   "ring",
+    "btn_greed":  "greed_ring",
+    "btn_swift":  "swift_ring",
+    "btn_flask":  "flask",
+    "btn_scroll": "war_scroll",
+}
+
 class MerchantUI(discord.ui.View):
     def __init__(self, cog, user, location_key, farm_view):
         super().__init__(timeout=None)
@@ -99,6 +107,13 @@ class MerchantUI(discord.ui.View):
         self.bot = cog.bot
         self.location_key = location_key
         self.farm_view = farm_view
+        # Автоматически синхронизировать метки кнопок с ценами из ITEMS
+        for child in self.children:
+            item_key = _MERCHANT_BUTTON_ITEMS.get(child.callback.__name__)
+            if item_key and item_key in ITEMS:
+                item = ITEMS[item_key]
+                emoji_name = item["name"].split(" ", 1)[0]  # первый emoji из имени предмета
+                child.label = f"{emoji_name} {item['name'].split(' ', 1)[1].strip()} ({item['price']})"
 
     async def buy_item(self, interaction, item_key):
         if interaction.user.id != self.user.id:
@@ -136,16 +151,16 @@ class MerchantUI(discord.ui.View):
     @discord.ui.button(label="💍 Жертвенное (1000)", style=discord.ButtonStyle.secondary, row=0)
     async def btn_ring(self, i: discord.Interaction, b: discord.ui.Button): await self.buy_item(i, "ring")
 
-    @discord.ui.button(label="💛 Жадное (1500)", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="💛 Жадное (5000)", style=discord.ButtonStyle.secondary, row=0)
     async def btn_greed(self, i: discord.Interaction, b: discord.ui.Button): await self.buy_item(i, "greed_ring")
 
-    @discord.ui.button(label="🔵 Стремительное (2000)", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="🔵 Стремительное (2500)", style=discord.ButtonStyle.secondary, row=0)
     async def btn_swift(self, i: discord.Interaction, b: discord.ui.Button): await self.buy_item(i, "swift_ring")
 
-    @discord.ui.button(label="🧪 Фляга (500)", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🧪 Фляга (300)", style=discord.ButtonStyle.secondary, row=1)
     async def btn_flask(self, i: discord.Interaction, b: discord.ui.Button): await self.buy_item(i, "flask")
 
-    @discord.ui.button(label="📜 Свиток Ярости (800)", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="📜 Свиток Ярости (1000)", style=discord.ButtonStyle.secondary, row=1)
     async def btn_scroll(self, i: discord.Interaction, b: discord.ui.Button): await self.buy_item(i, "war_scroll")
 
     @discord.ui.button(label="⚔️ Снова в бой", style=discord.ButtonStyle.primary, row=2)
@@ -158,16 +173,6 @@ class MerchantUI(discord.ui.View):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваша игра!", ephemeral=True)
         embed = await self.farm_view.main_view.get_main_embed()
         await interaction.response.edit_message(embed=embed, view=self.farm_view.main_view)
-
-
-class MerchantTestUI(MerchantUI):
-    def __init__(self, cog, user):
-        super().__init__(cog=cog, user=user, location_key=None, farm_view=None)
-
-        # В тестовом режиме оставляем только кнопки покупки.
-        for child in list(self.children):
-            if isinstance(child, discord.ui.Button) and child.label in {"⚔️ Снова в бой", "🔙 Вернуться в лагерь"}:
-                self.remove_item(child)
 
 class InventoryUI(discord.ui.View):
     def __init__(self, bot, user, main_view=None):
@@ -184,11 +189,15 @@ class InventoryUI(discord.ui.View):
         items = await self.get_inventory_data()
         items_dict = {row[0]: {"amount": row[1], "equipped": row[2]} for row in items}
         total_equipped = sum(row[2] for row in items if row[2] > 0)
+        async with self.bot.db.execute("SELECT auto_use_flask FROM users WHERE id = ?", (self.user.id,)) as cursor:
+            user_row = await cursor.fetchone()
+        auto_flask_enabled = bool(user_row[0]) if user_row else False
 
         embed = discord.Embed(title="🎒 Инвентарь и Экипировка", color=discord.Color.dark_gold())
         embed.set_thumbnail(url=self.user.display_avatar.url)
 
-        desc = f"**Занято слотов экипировки: {total_equipped}/4**\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+        auto_flask_text = "ВКЛ" if auto_flask_enabled else "ВЫКЛ"
+        desc = f"**Занято слотов экипировки: {total_equipped}/4**\n**Авто-фляга: {auto_flask_text}**\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
         if not items:
             desc += "Ваш рюкзак абсолютно пуст."
         else:
@@ -292,6 +301,27 @@ class InventoryUI(discord.ui.View):
         await self.bot.db.commit()
         embed = await self.generate_embed()
         await interaction.response.edit_message(content="🔥 Свиток Ярости активирован! Следующая успешная охота принесёт двойные души.", embed=embed, view=self)
+
+    @discord.ui.button(label="⚙️ Авто-фляга", style=discord.ButtonStyle.secondary, row=4)
+    async def btn_toggle_auto_flask(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message("Это не ваш инвентарь!", ephemeral=True)
+
+        async with self.bot.db.execute("SELECT auto_use_flask FROM users WHERE id = ?", (self.user.id,)) as cursor:
+            row = await cursor.fetchone()
+        current_state = int(row[0]) if row else 0
+        new_state = 0 if current_state else 1
+
+        await self.bot.db.execute(
+            "INSERT INTO users (id, auto_use_flask) VALUES (?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET auto_use_flask = ?",
+            (self.user.id, new_state, new_state),
+        )
+        await self.bot.db.commit()
+
+        status = "включена" if new_state else "выключена"
+        embed = await self.generate_embed()
+        await interaction.response.edit_message(content=f"⚙️ Авто-фляга {status}.", embed=embed, view=self)
 
     @discord.ui.button(label="🔙 Вернуться", style=discord.ButtonStyle.primary, row=4)
     async def btn_back(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -440,6 +470,10 @@ class FarmUI(discord.ui.View):
         balance, level, lost_souls, energy, last_update, hunts, strength, vitality, luck, double_next_hunt = row
         now = int(time.time())
 
+        async with self.bot.db.execute("SELECT COALESCE(auto_use_flask, 0) FROM users WHERE id = ?", (self.user.id,)) as cursor:
+            auto_flask_row = await cursor.fetchone()
+        auto_use_flask = bool(auto_flask_row[0]) if auto_flask_row else False
+
         async with self.bot.db.execute("SELECT item_name, equipped FROM inventory WHERE user_id = ? AND equipped > 0", (self.user.id,)) as cursor:
             equipped_rings = {r[0]: r[1] for r in await cursor.fetchall()}
         greed_rings = equipped_rings.get('greed_ring', 0)
@@ -466,6 +500,24 @@ class FarmUI(discord.ui.View):
         energy -= 1
         if last_update == 0: last_update = now
 
+        auto_flask_text = ""
+        if energy == 0 and auto_use_flask:
+            async with self.bot.db.execute(
+                "SELECT amount FROM inventory WHERE user_id = ? AND item_name = 'flask'",
+                (self.user.id,),
+            ) as cursor:
+                flask_row = await cursor.fetchone()
+
+            flask_amount = flask_row[0] if flask_row else 0
+            if flask_amount > 0:
+                await self.bot.db.execute(
+                    "UPDATE inventory SET amount = amount - 1 WHERE user_id = ? AND item_name = 'flask'",
+                    (self.user.id,),
+                )
+                energy = 5
+                last_update = 0
+                auto_flask_text = "\n\n🧪 **Авто-фляга:** бодрость упала до 0, фляга использована автоматически."
+
         death_chance = max(5, loc_data["base_death"] - (level - 1) - (vitality * 0.5) - (swift_rings * 5))
         roll = random.uniform(0, 100)
 
@@ -483,7 +535,7 @@ class FarmUI(discord.ui.View):
                 await self.bot.db.commit()
                 
                 embed.title = "💍 КОЛЬЦО РАСКОЛОЛОСЬ!"
-                embed.description = f"## Локация: {loc_data['name']}\nСмертельный удар обрушился на вас, но надетое **Кольцо Жертвенности** вспыхнуло ярким светом и рассыпалось в прах. Души сохранены!\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **{balance}** 👻\nОсталось бодрости: ⚡ {energy}/5"
+                embed.description = f"## Локация: {loc_data['name']}\nСмертельный удар обрушился на вас, но надетое **Кольцо Жертвенности** вспыхнуло ярким светом и рассыпалось в прах. Души сохранены!{auto_flask_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **{balance}** 👻\nОсталось бодрости: ⚡ {energy}/5"
                 embed.color = discord.Color.gold()
                 await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user, location_key, self))
             else:
@@ -492,7 +544,7 @@ class FarmUI(discord.ui.View):
                 await self.bot.db.commit()
                 
                 embed.title = "☠️ ВЫ ПОГИБЛИ!"
-                embed.description = f"## Локация: {loc_data['name']}\nТьма поглотила вас.\nВы выронили `{new_lost_souls}` 👻 душ.\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **0** 👻\nОсталось бодрости: ⚡ {energy}/5"
+                embed.description = f"## Локация: {loc_data['name']}\nТьма поглотила вас.\nВы выронили `{new_lost_souls}` 👻 душ.{auto_flask_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n💰 Текущий баланс: **0** 👻\nОсталось бодрости: ⚡ {energy}/5"
                 embed.color = discord.Color.red()
                 if lost_souls > 0: embed.description += "\n⚠️ **Предыдущее кровавое пятно исчезло. Старые души утеряны!**"
                 await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user, location_key, self))
@@ -530,7 +582,7 @@ class FarmUI(discord.ui.View):
             embed.title = "⚔️ Охота успешна!"
             embed.description = (
                 f"## Локация: {loc_data['name']}\nВы выжили и принесли `{pure_reward}` 👻 душ."
-                f"{recovered_text}{bonus_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+                f"{recovered_text}{bonus_text}{auto_flask_text}\n\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
                 f"💰 Текущий баланс: **{new_balance}** 👻\n"
                 f"🏆 Успешных побед: **{new_hunts}**\n"
                 f"Осталось бодрости: ⚡ {energy}/5"
@@ -684,24 +736,56 @@ class Game(commands.Cog):
         embed = await view.generate_embed()
         await interaction.response.send_message(embed=embed, view=view)
 
-    @app_commands.command(name="merchant_test", description="🛠️ [АДМИН] Вызвать торговца для теста")
+    @app_commands.command(name="auto_flask", description="🧪 Включить или выключить авто-использование фляги")
+    @app_commands.describe(mode="Выберите режим")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="Включить", value="on"),
+        app_commands.Choice(name="Выключить", value="off"),
+    ])
+    async def auto_flask(self, interaction: discord.Interaction, mode: app_commands.Choice[str]):
+        new_state = 1 if mode.value == "on" else 0
+        await self.bot.db.execute(
+            "INSERT INTO users (id, auto_use_flask) VALUES (?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET auto_use_flask = ?",
+            (interaction.user.id, new_state, new_state),
+        )
+        await self.bot.db.commit()
+
+        status_text = "включено" if new_state else "выключено"
+        await interaction.response.send_message(
+            f"⚙️ Авто-использование фляги {status_text}. Когда бодрость падает до 0, фляга будет применена автоматически (если она есть в инвентаре).",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="merchant", description="🛠️ [АДМИН] Принудительно вызвать странствующего торговца")
     @app_commands.checks.has_permissions(administrator=True)
-    @app_commands.describe(member="Для кого открыть торговца (по умолчанию: вы)")
-    async def merchant_test(self, interaction: discord.Interaction, member: discord.Member | None = None):
-        target = member or interaction.user
+    async def merchant(self, interaction: discord.Interaction):
+        target = interaction.user
+
+        async with self.bot.db.execute("SELECT char_name FROM users WHERE id = ?", (target.id,)) as cursor:
+            row = await cursor.fetchone()
+        if not row or not row[0]:
+            return await interaction.response.send_message(
+                "❌ Сначала создайте персонажа через `/game`.",
+                ephemeral=True,
+            )
+
+        main_view = GameUI(self.bot, target)
+        farm_view = FarmUI(self.bot, target, main_view=main_view)
+        merchant_view = MerchantUI(self, target, "graveyard", farm_view)
 
         embed = discord.Embed(
-            title="🎒 Тестовый торговец",
+            title="🎒 Странствующий торговец",
             description=(
-                f"Режим теста активирован для {target.mention}.\n"
-                "Здесь можно проверить покупку предметов без случайного появления торговца на охоте."
+                "Вы принудительно вызвали странствующего торговца для тестирования.\n"
+                "Это тот же торговец, который появляется на охоте с небольшим шансом."
             ),
             color=discord.Color.orange(),
         )
 
         await interaction.response.send_message(
             embed=embed,
-            view=MerchantTestUI(self, target),
+            view=merchant_view,
             ephemeral=True,
         )
 
