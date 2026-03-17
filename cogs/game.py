@@ -27,12 +27,14 @@ LOCATIONS = {
 }
 
 ITEMS = {
-    "ring":       {"name": "💍 Кольцо Жертвенности",   "price": 1000, "type": "equippable", "desc": "Одноразовое. При смертельном ударе вспыхивает и разбивается, сохраняя ваши души."},
-    "greed_ring": {"name": "💛 Кольцо Жадности",        "price": 1500, "type": "equippable", "desc": "Пассивное. Каждая надетая копия даёт +20% к добытым душам на охоте."},
-    "swift_ring": {"name": "🔵 Кольцо Стремительности", "price": 2000, "type": "equippable", "desc": "Пассивное. Каждая надетая копия снижает шанс смерти на 5%."},
-    "flask":      {"name": "🧪 Фляга Бодрости",         "price": 500,  "type": "consumable", "desc": "Восстанавливает вашу бодрость (энергию) до максимума (5/5)."},
-    "war_scroll": {"name": "📜 Свиток Ярости",          "price": 800,  "type": "consumable", "desc": "Примените перед охотой. Следующая успешная охота принесёт двойные души."},
+    "ring":       {"name": "💍 Кольцо Жертвенности",    "price": 1000, "type": "equippable", "desc": "Одноразовое. При смертельном ударе вспыхивает и разбивается, сохраняя ваши души."},
+    "greed_ring": {"name": "💛 Кольцо Жадности",        "price": 5000, "type": "equippable", "desc": "Пассивное. Каждая надетая копия даёт +20% к добытым душам на охоте."},
+    "swift_ring": {"name": "🔵 Кольцо Стремительности", "price": 2500, "type": "equippable", "desc": "Пассивное. Каждая надетая копия снижает шанс смерти на 5%."},
+    "flask":      {"name": "🧪 Фляга Эстуса",           "price": 300,  "type": "consumable", "desc": "Восстанавливает вашу бодрость до максимума."},
+    "war_scroll": {"name": "📜 Свиток Ярости",          "price": 1000,  "type": "consumable", "desc": "Примените перед охотой. Следующая успешная охота принесёт двойные души."},
 }
+
+RING_ITEM_KEYS = {"ring", "greed_ring", "swift_ring"}
 
 async def get_profile_embed(bot, user: discord.Member):
     async with bot.db.execute(
@@ -103,6 +105,18 @@ class MerchantUI(discord.ui.View):
             return await interaction.response.send_message("Торговец смотрит не на вас!", ephemeral=True)
         item = ITEMS[item_key]
 
+        if item_key in RING_ITEM_KEYS:
+            async with self.bot.db.execute(
+                "SELECT 1 FROM inventory WHERE user_id = ? AND item_name = ? LIMIT 1",
+                (self.user.id, item_key),
+            ) as cursor:
+                already_had_ring = await cursor.fetchone()
+            if already_had_ring:
+                return await interaction.response.send_message(
+                    f"❌ **{item['name']}** можно получить только один раз за персонажа.",
+                    ephemeral=True,
+                )
+
         async with self.bot.db.execute("SELECT balance FROM users WHERE id = ?", (self.user.id,)) as cursor:
             row = await cursor.fetchone()
         balance = row[0] if row else 0
@@ -144,6 +158,16 @@ class MerchantUI(discord.ui.View):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваша игра!", ephemeral=True)
         embed = await self.farm_view.main_view.get_main_embed()
         await interaction.response.edit_message(embed=embed, view=self.farm_view.main_view)
+
+
+class MerchantTestUI(MerchantUI):
+    def __init__(self, cog, user):
+        super().__init__(cog=cog, user=user, location_key=None, farm_view=None)
+
+        # В тестовом режиме оставляем только кнопки покупки.
+        for child in list(self.children):
+            if isinstance(child, discord.ui.Button) and child.label in {"⚔️ Снова в бой", "🔙 Вернуться в лагерь"}:
+                self.remove_item(child)
 
 class InventoryUI(discord.ui.View):
     def __init__(self, bot, user, main_view=None):
@@ -660,6 +684,27 @@ class Game(commands.Cog):
         embed = await view.generate_embed()
         await interaction.response.send_message(embed=embed, view=view)
 
+    @app_commands.command(name="merchant_test", description="🛠️ [АДМИН] Вызвать торговца для теста")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(member="Для кого открыть торговца (по умолчанию: вы)")
+    async def merchant_test(self, interaction: discord.Interaction, member: discord.Member | None = None):
+        target = member or interaction.user
+
+        embed = discord.Embed(
+            title="🎒 Тестовый торговец",
+            description=(
+                f"Режим теста активирован для {target.mention}.\n"
+                "Здесь можно проверить покупку предметов без случайного появления торговца на охоте."
+            ),
+            color=discord.Color.orange(),
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=MerchantTestUI(self, target),
+            ephemeral=True,
+        )
+
     @app_commands.command(name="give_item", description="🛡️ [АДМИН] Выдать предмет игроку")
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.choices(item_name=[
@@ -670,7 +715,29 @@ class Game(commands.Cog):
         app_commands.Choice(name="📜 Свиток Ярости", value="war_scroll"),
     ])
     async def give_item(self, interaction: discord.Interaction, member: discord.Member, item_name: app_commands.Choice[str], amount: int):
-        await self.bot.db.execute("INSERT INTO inventory (user_id, item_name, amount, equipped) VALUES (?, ?, ?, 0) ON CONFLICT(user_id, item_name) DO UPDATE SET amount = amount + ?", (member.id, item_name.value, amount, amount))
+        if amount < 1:
+            return await interaction.response.send_message("❌ Количество должно быть не меньше 1.", ephemeral=True)
+
+        if item_name.value in RING_ITEM_KEYS:
+            async with self.bot.db.execute(
+                "SELECT 1 FROM inventory WHERE user_id = ? AND item_name = ? LIMIT 1",
+                (member.id, item_name.value),
+            ) as cursor:
+                already_had_ring = await cursor.fetchone()
+
+            if already_had_ring:
+                return await interaction.response.send_message(
+                    f"❌ У {member.mention} уже было это кольцо. По новой механике кольца выдаются только один раз за персонажа.",
+                    ephemeral=True,
+                )
+
+            amount = 1
+
+        await self.bot.db.execute(
+            "INSERT INTO inventory (user_id, item_name, amount, equipped) VALUES (?, ?, ?, 0) "
+            "ON CONFLICT(user_id, item_name) DO UPDATE SET amount = amount + ?",
+            (member.id, item_name.value, amount, amount),
+        )
         await self.bot.db.commit()
         await interaction.response.send_message(f"✅ Вы выдали **{amount} шт. {item_name.name}** игроку {member.mention}.", ephemeral=True)
 
