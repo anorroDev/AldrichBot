@@ -759,27 +759,6 @@ class Game(commands.Cog):
         embed = await view.build()
         await interaction.response.send_message(embed=embed, view=view)
 
-    @app_commands.command(name="auto_flask", description="🧪 Включить или выключить авто-использование фляги")
-    @app_commands.describe(mode="Выберите режим")
-    @app_commands.choices(mode=[
-        app_commands.Choice(name="Включить", value="on"),
-        app_commands.Choice(name="Выключить", value="off"),
-    ])
-    async def auto_flask(self, interaction: discord.Interaction, mode: app_commands.Choice[str]):
-        new_state = 1 if mode.value == "on" else 0
-        await self.bot.db.execute(
-            "INSERT INTO users (id, auto_use_flask) VALUES (?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET auto_use_flask = ?",
-            (interaction.user.id, new_state, new_state),
-        )
-        await self.bot.db.commit()
-
-        status_text = "включено" if new_state else "выключено"
-        await interaction.response.send_message(
-            f"⚙️ Авто-использование фляги {status_text}. Когда бодрость падает до 0, фляга будет применена автоматически (если она есть в инвентаре).",
-            ephemeral=True,
-        )
-
     @app_commands.command(name="merchant", description="🛠️Принудительно вызвать странствующего торговца")
     @app_commands.checks.has_permissions(administrator=True)
     async def merchant(self, interaction: discord.Interaction):
