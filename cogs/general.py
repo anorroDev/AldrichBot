@@ -227,6 +227,7 @@ class General(commands.Cog):
             "color": discord.Color.dark_orange(),
             "title": "👑 Административные команды",
             "fields": [
+                ("/devmsg <тема>", "Отправить готовое сообщение о статусе разработки по выбранной тематике. `Только администраторы`"),
                 ("/verify", "Отправить в канал сообщение с кнопкой верификации. `Только администраторы`"),
                 ("/giveaway <время> <победителей> <приз>", "Запустить розыгрыш с кнопкой участия. `Только администраторы`"),
                 ("/change_balance <set/add/remove> <участник> <сумма>", "Изменить баланс **душ** игрока. `Только администраторы`"),
@@ -234,6 +235,14 @@ class General(commands.Cog):
                 ("/give_item <участник> <предмет> <кол-во>", "Выдать предмет в инвентарь игрока. `Только администраторы`"),
             ],
         },
+    }
+
+    DEV_MESSAGES = {
+        "general": "🛠️ Сервер и бот активно развиваются. Сейчас мы дорабатываем ключевые системы и готовим крупные обновления. Спасибо за терпение и поддержку!",
+        "game": "⚔️ Игровой режим находится в активной разработке. В ближайших обновлениях будут новые механики, балансные правки и расширение контента.",
+        "events": "🎉 Ивент-система в процессе подготовки. Мы тестируем новые форматы активностей и скоро добавим больше регулярных событий на сервере.",
+        "tech": "🔧 Сейчас идут технические доработки и оптимизация стабильности. Возможны мелкие изменения в работе бота, это часть подготовки к следующему этапу обновлений.",
+        "community": "📢 Мы продолжаем развивать сервер вместе с сообществом. Больше нововведений и улучшений уже в работе и будут появляться поэтапно в ближайшее время.",
     }
 
     @app_commands.command(name="help", description="📖 Список всех команд бота по категориям")
@@ -477,6 +486,29 @@ class General(commands.Cog):
     async def flip(self, interaction: discord.Interaction) -> None:
         result = random.choice(["🦅 Орел", "🪙 Решка"])
         await interaction.response.send_message(f"{interaction.user.mention} подкидывает монетку... Выпадает: **{result}**!")
+
+    @app_commands.command(name="devmsg", description="📢 Отправить сообщение о статусе разработки")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(topic="Выберите тематику сообщения")
+    @app_commands.choices(topic=[
+        app_commands.Choice(name="Общее развитие", value="general"),
+        app_commands.Choice(name="Игровые обновления", value="game"),
+        app_commands.Choice(name="Ивенты", value="events"),
+        app_commands.Choice(name="Технические работы", value="tech"),
+        app_commands.Choice(name="Для сообщества", value="community"),
+    ])
+    async def devmsg(self, interaction: discord.Interaction, topic: app_commands.Choice[str]) -> None:
+        message = self.DEV_MESSAGES.get(topic.value)
+        if not message:
+            return await interaction.response.send_message("❌ Неизвестная тематика сообщения.", ephemeral=True)
+        await interaction.response.send_message(message)
+
+    @devmsg.error
+    async def devmsg_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("❌ Эта команда доступна только администраторам!", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ Произошла ошибка: {error}", ephemeral=True)
 
     #----------------------------------------------
     #               giveaway commands
