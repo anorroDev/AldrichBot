@@ -174,6 +174,27 @@ class MerchantUI(discord.ui.View):
         embed = await self.farm_view.main_view.get_main_embed()
         await interaction.response.edit_message(embed=embed, view=self.farm_view.main_view)
 
+class InventoryButton(discord.ui.Button):
+    def __init__(self, view: 'InventoryUI', action: str, item_key: str = None, **kwargs):
+        super().__init__(**kwargs)
+        self._inv_view = view
+        self._action = action
+        self._item_key = item_key
+
+    async def callback(self, interaction: discord.Interaction):
+        if self._action == "equip":
+            await self._inv_view._equip_ring(interaction, self._item_key)
+        elif self._action == "unequip":
+            await self._inv_view._unequip_ring(interaction, self._item_key)
+        elif self._action == "use_flask":
+            await self._inv_view._use_flask(interaction)
+        elif self._action == "use_scroll":
+            await self._inv_view._use_scroll(interaction)
+        elif self._action == "toggle_auto_flask":
+            await self._inv_view._toggle_auto_flask(interaction)
+        elif self._action == "back":
+            await self._inv_view._go_back(interaction)
+
 class InventoryUI(discord.ui.View):
     def __init__(self, bot, user, main_view=None):
         super().__init__(timeout=None)
@@ -185,7 +206,7 @@ class InventoryUI(discord.ui.View):
         async with self.bot.db.execute("SELECT item_name, amount, equipped FROM inventory WHERE user_id = ? AND amount > 0", (self.user.id,)) as cursor:
             return await cursor.fetchall()
 
-    async def generate_embed(self):
+    async def build(self):
         items = await self.get_inventory_data()
         items_dict = {row[0]: {"amount": row[1], "equipped": row[2]} for row in items}
         total_equipped = sum(row[2] for row in items if row[2] > 0)
@@ -195,7 +216,6 @@ class InventoryUI(discord.ui.View):
 
         embed = discord.Embed(title="🎒 Инвентарь и Экипировка", color=discord.Color.dark_gold())
         embed.set_thumbnail(url=self.user.display_avatar.url)
-
         auto_flask_text = "ВКЛ" if auto_flask_enabled else "ВЫКЛ"
         desc = f"**Занято слотов экипировки: {total_equipped}/4**\n**Авто-фляга: {auto_flask_text}**\n▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
         if not items:
@@ -206,12 +226,45 @@ class InventoryUI(discord.ui.View):
                     item_data = ITEMS[item_id]
                     amount, equipped = data["amount"], data["equipped"]
                     in_bag = amount - equipped
-                    if equipped > 0:
-                        eq_text = f" *({equipped} надето, {in_bag} в рюкзаке)*"
-                    else:
-                        eq_text = f" *({amount} в рюкзаке)*"
+                    eq_text = f" *({equipped} надето, {in_bag} в рюкзаке)*" if equipped > 0 else f" *({amount} в рюкзаке)*"
                     desc += f"**{item_data['name']}**{eq_text}\n*{item_data['desc']}*\n\n"
         embed.description = desc
+
+        # Пересобираем кнопки на основе текущего инвентаря
+        self.clear_items()
+        current_row = 0
+        for item_key, label in [("ring", "💍 Жертвенное"), ("greed_ring", "💛 Жадное"), ("swift_ring", "🔵 Стремительное")]:
+            data = items_dict.get(item_key)
+            if not data:
+                continue
+            added = False
+            if data["amount"] - data["equipped"] > 0:
+                self.add_item(InventoryButton(self, "equip", item_key,
+                    label=f"Надеть {label}", style=discord.ButtonStyle.secondary, row=current_row))
+                added = True
+            if data["equipped"] > 0:
+                self.add_item(InventoryButton(self, "unequip", item_key,
+                    label=f"Снять {label}", style=discord.ButtonStyle.secondary, row=current_row))
+                added = True
+            if added:
+                current_row += 1
+
+        has_flask = "flask" in items_dict
+        has_scroll = "war_scroll" in items_dict
+        if has_flask or has_scroll:
+            if has_flask:
+                self.add_item(InventoryButton(self, "use_flask", None,
+                    label="🧪 Выпить Флягу", style=discord.ButtonStyle.success, row=current_row))
+            if has_scroll:
+                self.add_item(InventoryButton(self, "use_scroll", None,
+                    label="📜 Применить Свиток", style=discord.ButtonStyle.success, row=current_row))
+            current_row += 1
+
+        self.add_item(InventoryButton(self, "toggle_auto_flask", None,
+            label=f"⚙️ Авто-фляга: {'ВКЛ' if auto_flask_enabled else 'ВЫКЛ'}",
+            style=discord.ButtonStyle.secondary, row=current_row))
+        self.add_item(InventoryButton(self, "back", None,
+            label="🔙 Вернуться", style=discord.ButtonStyle.primary, row=current_row))
         return embed
 
     async def _equip_ring(self, interaction: discord.Interaction, item_key: str):
@@ -220,16 +273,14 @@ class InventoryUI(discord.ui.View):
         items = await self.get_inventory_data()
         items_dict = {row[0]: {"amount": row[1], "equipped": row[2]} for row in items}
         total_equipped = sum(row[2] for row in items if row[2] > 0)
-
         if total_equipped >= 4:
             return await interaction.response.send_message("❌ Заняты все 4 слота экипировки!", ephemeral=True)
         ring_data = items_dict.get(item_key)
         if not ring_data or ring_data["amount"] <= ring_data["equipped"]:
             return await interaction.response.send_message(f"❌ Нет свободных **{ITEMS[item_key]['name']}** в рюкзаке!", ephemeral=True)
-
         await self.bot.db.execute("UPDATE inventory SET equipped = equipped + 1 WHERE user_id = ? AND item_name = ?", (self.user.id, item_key))
         await self.bot.db.commit()
-        embed = await self.generate_embed()
+        embed = await self.build()
         await interaction.response.edit_message(content=f"✅ Надето: **{ITEMS[item_key]['name']}**.", embed=embed, view=self)
 
     async def _unequip_ring(self, interaction: discord.Interaction, item_key: str):
@@ -240,32 +291,12 @@ class InventoryUI(discord.ui.View):
         ring_data = items_dict.get(item_key)
         if not ring_data or ring_data["equipped"] <= 0:
             return await interaction.response.send_message(f"❌ На вас нет **{ITEMS[item_key]['name']}**!", ephemeral=True)
-
         await self.bot.db.execute("UPDATE inventory SET equipped = equipped - 1 WHERE user_id = ? AND item_name = ?", (self.user.id, item_key))
         await self.bot.db.commit()
-        embed = await self.generate_embed()
+        embed = await self.build()
         await interaction.response.edit_message(content=f"✅ Снято: **{ITEMS[item_key]['name']}**.", embed=embed, view=self)
 
-    @discord.ui.button(label="💍 Надеть Жертвенное", style=discord.ButtonStyle.secondary, row=0)
-    async def btn_equip_ring(self, i: discord.Interaction, b: discord.ui.Button): await self._equip_ring(i, "ring")
-
-    @discord.ui.button(label="💍 Снять Жертвенное", style=discord.ButtonStyle.secondary, row=0)
-    async def btn_unequip_ring(self, i: discord.Interaction, b: discord.ui.Button): await self._unequip_ring(i, "ring")
-
-    @discord.ui.button(label="💛 Надеть Жадное", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_equip_greed(self, i: discord.Interaction, b: discord.ui.Button): await self._equip_ring(i, "greed_ring")
-
-    @discord.ui.button(label="💛 Снять Жадное", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_unequip_greed(self, i: discord.Interaction, b: discord.ui.Button): await self._unequip_ring(i, "greed_ring")
-
-    @discord.ui.button(label="🔵 Надеть Стремительное", style=discord.ButtonStyle.secondary, row=2)
-    async def btn_equip_swift(self, i: discord.Interaction, b: discord.ui.Button): await self._equip_ring(i, "swift_ring")
-
-    @discord.ui.button(label="🔵 Снять Стремительное", style=discord.ButtonStyle.secondary, row=2)
-    async def btn_unequip_swift(self, i: discord.Interaction, b: discord.ui.Button): await self._unequip_ring(i, "swift_ring")
-
-    @discord.ui.button(label="🧪 Выпить Флягу", style=discord.ButtonStyle.success, row=3)
-    async def btn_flask(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _use_flask(self, interaction: discord.Interaction):
         if interaction.user.id != self.user.id:
             return await interaction.response.send_message("Это не ваш инвентарь!", ephemeral=True)
         items = await self.get_inventory_data()
@@ -276,15 +307,13 @@ class InventoryUI(discord.ui.View):
             energy_row = await cursor.fetchone()
         if energy_row and energy_row[0] >= 5:
             return await interaction.response.send_message("❌ Бодрость уже максимальна (5/5)!", ephemeral=True)
-
         await self.bot.db.execute("UPDATE inventory SET amount = amount - 1 WHERE user_id = ? AND item_name = 'flask'", (self.user.id,))
         await self.bot.db.execute("UPDATE users SET energy = 5, last_energy_update = 0 WHERE id = ?", (self.user.id,))
         await self.bot.db.commit()
-        embed = await self.generate_embed()
+        embed = await self.build()
         await interaction.response.edit_message(content="✅ Выпита Фляга! Бодрость восстановлена до 5/5.", embed=embed, view=self)
 
-    @discord.ui.button(label="📜 Применить Свиток", style=discord.ButtonStyle.success, row=3)
-    async def btn_scroll(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _use_scroll(self, interaction: discord.Interaction):
         if interaction.user.id != self.user.id:
             return await interaction.response.send_message("Это не ваш инвентарь!", ephemeral=True)
         items = await self.get_inventory_data()
@@ -295,36 +324,30 @@ class InventoryUI(discord.ui.View):
             dnh_row = await cursor.fetchone()
         if dnh_row and dnh_row[0]:
             return await interaction.response.send_message("⚠️ Свиток Ярости уже активен! Идите на охоту.", ephemeral=True)
-
         await self.bot.db.execute("UPDATE inventory SET amount = amount - 1 WHERE user_id = ? AND item_name = 'war_scroll'", (self.user.id,))
         await self.bot.db.execute("UPDATE users SET double_next_hunt = 1 WHERE id = ?", (self.user.id,))
         await self.bot.db.commit()
-        embed = await self.generate_embed()
+        embed = await self.build()
         await interaction.response.edit_message(content="🔥 Свиток Ярости активирован! Следующая успешная охота принесёт двойные души.", embed=embed, view=self)
 
-    @discord.ui.button(label="⚙️ Авто-фляга", style=discord.ButtonStyle.secondary, row=4)
-    async def btn_toggle_auto_flask(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _toggle_auto_flask(self, interaction: discord.Interaction):
         if interaction.user.id != self.user.id:
             return await interaction.response.send_message("Это не ваш инвентарь!", ephemeral=True)
-
         async with self.bot.db.execute("SELECT auto_use_flask FROM users WHERE id = ?", (self.user.id,)) as cursor:
             row = await cursor.fetchone()
         current_state = int(row[0]) if row else 0
         new_state = 0 if current_state else 1
-
         await self.bot.db.execute(
             "INSERT INTO users (id, auto_use_flask) VALUES (?, ?) "
             "ON CONFLICT(id) DO UPDATE SET auto_use_flask = ?",
             (self.user.id, new_state, new_state),
         )
         await self.bot.db.commit()
-
         status = "включена" if new_state else "выключена"
-        embed = await self.generate_embed()
+        embed = await self.build()
         await interaction.response.edit_message(content=f"⚙️ Авто-фляга {status}.", embed=embed, view=self)
 
-    @discord.ui.button(label="🔙 Вернуться", style=discord.ButtonStyle.primary, row=4)
-    async def btn_back(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _go_back(self, interaction: discord.Interaction):
         if interaction.user.id != self.user.id:
             return await interaction.response.send_message("Это не ваш персонаж!", ephemeral=True)
         if self.main_view:
@@ -647,7 +670,7 @@ class GameUI(discord.ui.View):
     async def b_inv(self, i: discord.Interaction, b: discord.ui.Button):
         if i.user.id != self.user.id: return await i.response.send_message("Это не ваш персонаж!", ephemeral=True)
         inv_view = InventoryUI(self.bot, self.user, main_view=self)
-        embed = await inv_view.generate_embed()
+        embed = await inv_view.build()
         await i.response.edit_message(embed=embed, view=inv_view)
 
     @discord.ui.button(label="🔥 Прокачка", style=discord.ButtonStyle.success, custom_id="g_levelup")
@@ -733,7 +756,7 @@ class Game(commands.Cog):
     @app_commands.command(name="inventory", description="🎒 Открыть свой инвентарь предметов")
     async def inventory(self, interaction: discord.Interaction):
         view = InventoryUI(self.bot, interaction.user)
-        embed = await view.generate_embed()
+        embed = await view.build()
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="auto_flask", description="🧪 Включить или выключить авто-использование фляги")
@@ -757,7 +780,7 @@ class Game(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="merchant", description="🛠️ [АДМИН] Принудительно вызвать странствующего торговца")
+    @app_commands.command(name="merchant", description="🛠️Принудительно вызвать странствующего торговца")
     @app_commands.checks.has_permissions(administrator=True)
     async def merchant(self, interaction: discord.Interaction):
         target = interaction.user
@@ -789,7 +812,7 @@ class Game(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="give_item", description="🛡️ [АДМИН] Выдать предмет игроку")
+    @app_commands.command(name="give_item", description="🛡️ Выдать предмет игроку")
     @app_commands.checks.has_permissions(administrator=True)
     @app_commands.choices(item_name=[
         app_commands.Choice(name="💍 Кольцо Жертвенности", value="ring"),
@@ -811,7 +834,7 @@ class Game(commands.Cog):
 
             if already_had_ring:
                 return await interaction.response.send_message(
-                    f"❌ У {member.mention} уже было это кольцо. По новой механике кольца выдаются только один раз за персонажа.",
+                    f"❌ У {member.mention} уже есть это кольцо.",
                     ephemeral=True,
                 )
 

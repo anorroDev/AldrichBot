@@ -314,7 +314,7 @@ class Activity(commands.Cog):
 
     # ---------------------------------------------- Административные команды ----------------------------------------------
     
-    @app_commands.command(name="change_balance", description="🛡️ [АДМИН] Изменить баланс душ пользователя")
+    @app_commands.command(name="change_balance", description="🛡️ Изменить баланс душ пользователя")
     @app_commands.checks.has_permissions(administrator=True) 
     @app_commands.describe(action="Что сделать с балансом?", member="Выберите пользователя", amount="Укажите сумму")
     @app_commands.choices(action=[
@@ -358,7 +358,7 @@ class Activity(commands.Cog):
             await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
 
-    @app_commands.command(name="give_activity", description="🛡️ [АДМИН] Наградить пользователя Очками Активности")
+    @app_commands.command(name="give_activity", description="🛡️ Наградить пользователя Очками Активности")
     @app_commands.describe(member="Кого наградить?", amount="Сколько очков дать?")
     @app_commands.checks.has_permissions(administrator=True)
     async def give_activity(self, interaction: discord.Interaction, member: discord.Member, amount: int) -> None:
