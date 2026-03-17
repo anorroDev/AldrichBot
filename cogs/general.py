@@ -78,6 +78,49 @@ class VerifyView(discord.ui.View):
                 )
 
 
+class HelpView(discord.ui.View):
+    def __init__(self, pages: dict, owner_id: int):
+        super().__init__(timeout=300)
+        self.pages = pages
+        self.owner_id = owner_id
+        self.current = "general"
+        self._rebuild_buttons()
+
+    def _rebuild_buttons(self):
+        for item in list(self.children):
+            self.remove_item(item)
+        for key, data in self.pages.items():
+            style = discord.ButtonStyle.primary if key == self.current else discord.ButtonStyle.secondary
+            btn = discord.ui.Button(label=data["label"], style=style, custom_id=f"help_{key}")
+            btn.callback = self._make_callback(key)
+            self.add_item(btn)
+
+    def _make_callback(self, key: str):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.owner_id:
+                return await interaction.response.send_message("❌ Откройте `/help` для себя.", ephemeral=True)
+            self.current = key
+            self._rebuild_buttons()
+            await interaction.response.edit_message(embed=self.build_embed(key), view=self)
+        return callback
+
+    def build_embed(self, key: str) -> discord.Embed:
+        page = self.pages[key]
+        embed = discord.Embed(
+            title=page["title"],
+            description="▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬",
+            color=page["color"],
+        )
+        for name, value in page["fields"]:
+            embed.add_field(name=name, value=value, inline=False)
+        embed.set_footer(text="Все команды являются слэш-командами (/). Нажмите кнопку ниже для смены категории.")
+        return embed
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+
+
 class General(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -105,6 +148,101 @@ class General(commands.Cog):
     def cog_unload(self):
         self.check_giveaways.cancel()
 
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    #                              /help  command
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    HELP_PAGES = {
+        "general": {
+            "label": "🔧 Общие",
+            "color": discord.Color.blurple(),
+            "title": "🔧 Общие команды",
+            "fields": [
+                ("/ping", "Показать задержку бота."),
+                ("/userinfo [участник]", "Информация о пользователе: роли, уровень, очки активности, персонаж."),
+                ("/avatar [участник]", "Показать аватар пользователя."),
+                ("/serverinfo", "Статистика сервера: участники, каналы, роли, буст."),
+                ("/afk [причина]", "Установить AFK-статус. Снимается автоматически при сообщении."),
+                ("/remind <время> <текст>", "Напоминание в чат. Формат времени: `10m`, `2h`, `1d`."),
+                ("/alarm <ЧЧ:ММ> <текст> [дата] [UTC]", "Будильник на точное время дня."),
+                ("/roll [макс]", "Бросить кубик (случайное число от 1 до макс)."),
+                ("/flip", "Подкинуть монетку — Орел или Решка."),
+            ],
+        },
+        "moderation": {
+            "label": "🛡️ Модерация",
+            "color": discord.Color.red(),
+            "title": "🛡️ Команды модерации",
+            "fields": [
+                ("/clear <кол-во>", "Удалить от 1 до 100 сообщений в канале. `Права: Manage Messages`"),
+                ("/mute <участник> <минуты> [причина]", "Выдать таймаут участнику. `Права: Moderate Members`"),
+                ("/unmute <участник> [причина]", "Досрочно снять таймаут. `Права: Moderate Members`"),
+                ("/kick <участник> [причина]", "Кикнуть участника с сервера. `Права: Kick Members`"),
+                ("/ban <участник> [причина]", "Забанить участника. `Права: Ban Members`"),
+                ("/unban <пользователь> [причина]", "Снять бан. `Права: Ban Members`"),
+                ("/roulette <участник>", "Случайное наказание: 1% бан, 5% кик, 20% мут на час, 30% мут 5 мин, 44% ничего. `Права: Ban Members`"),
+            ],
+        },
+        "activity": {
+            "label": "📊 Активность",
+            "color": discord.Color.gold(),
+            "title": "📊 Активность и Магазин",
+            "fields": [
+                ("/leaderboard", "Доска почёта — Топ-5 по уровню и по текущим очкам активности."),
+                ("/shop", "Открыть магазин АП: косметика, игровые предметы, особые предметы."),
+                ("/achievements", "Ваши достижения и прогресс по трём категориям: Активность, Игра, Секретные."),
+                ("Как зарабатываются АП?", "За каждое сообщение в чате **+1 АП**.\nЗа время в голосовых каналах **+1 АП / 5 мин**.\nЗа выполнение достижений — крупные бонусы."),
+            ],
+        },
+        "game": {
+            "label": "⚔️ Игра",
+            "color": discord.Color.dark_red(),
+            "title": "⚔️ RPG-система «Охота за Душами»",
+            "fields": [
+                ("/game", "Открыть главное игровое меню. Здесь можно охотиться за душами, улучшаться у костра, открыть Лавку и посетить торговца."),
+                ("/profile [участник]", "Карточка персонажа: уровень, души, энергия, характеристики, экипировка."),
+                ("/inventory", "Инвентарь и менеджер экипировки."),
+                ("Локации (разблокируются по охотам):", "🪦 Кладбище → 🌲 Проклятый лес (10 охот)\n💀 Катакомбы (25) → 🏰 Заброшенный замок (45)\n🌋 Пик Дракона (70) → 🌌 Бездна (100)"),
+                ("Предметы:", "💍 Кольцо Жертвенности — спасает от смерти (одноразовое)\n💛 Кольцо Жадности — +20% душ на охоте (пассивное)\n🔵 Кольцо Стремительности — −5% шанс смерти\n🧪 Фляга Бодрости — восстанавливает 5 ⚡\n📜 Свиток Ярости — следующая охота ×2 душ"),
+                ("Характеристики:", "💪 **Сила** — больше душ с охоты\n❤️ **Живучесть** — меньше шанс смерти\n🍀 **Удача** — больше шанс выжить и найти бонус"),
+            ],
+        },
+        "voice": {
+            "label": "🔊 Войс",
+            "color": discord.Color.teal(),
+            "title": "🔊 Приватные голосовые комнаты",
+            "fields": [
+                ("Как создать комнату?", "Зайдите в канал-хаб **«Создать комнату»** — бот автоматически создаст вашу личную комнату и отправит панель управления."),
+                ("🔒 Закрыть / 🔓 Открыть", "Ограничить или разрешить вход для всех участников сервера."),
+                ("✏️ Изменить имя", "Переименовать свою голосовую комнату."),
+                ("👥 Лимит мест", "Установить максимальное число участников (0 = без лимита)."),
+                ("✅ Пустить в канал", "Выдать конкретному участнику доступ к закрытой комнате."),
+                ("⛔ Выгнать", "Запретить конкретному участнику заходить в вашу комнату."),
+                ("Жизнь комнаты", "Комната удаляется автоматически, когда все участники её покидают."),
+            ],
+        },
+        "admin": {
+            "label": "👑 Админ",
+            "color": discord.Color.dark_orange(),
+            "title": "👑 Административные команды",
+            "fields": [
+                ("/verify", "Отправить в канал сообщение с кнопкой верификации. `Только администраторы`"),
+                ("/giveaway <время> <победителей> <приз>", "Запустить розыгрыш с кнопкой участия. `Только администраторы`"),
+                ("/change_balance <set/add/remove> <участник> <сумма>", "Изменить баланс **душ** игрока. `Только администраторы`"),
+                ("/give_activity <участник> <кол-во>", "Начислить **Очки Активности** пользователю. `Только администраторы`"),
+                ("/give_item <участник> <предмет> <кол-во>", "Выдать предмет в инвентарь игрока. `Только администраторы`"),
+            ],
+        },
+    }
+
+    @app_commands.command(name="help", description="📖 Список всех команд бота по категориям")
+    async def help_cmd(self, interaction: discord.Interaction) -> None:
+        view = HelpView(self.HELP_PAGES, interaction.user.id)
+        embed = view.build_embed("general")
+        await interaction.response.send_message(embed=embed, view=view)
+
+    # ─────────────────────────────────────────────────────────────────────────────
 
     @app_commands.command(name="ping", description="Посмотреть задержку бота.")
     async def ping(self, interaction: discord.Interaction) -> None:
