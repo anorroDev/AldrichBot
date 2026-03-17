@@ -237,10 +237,18 @@ class General(commands.Cog):
     }
 
     @app_commands.command(name="help", description="📖 Список всех команд бота по категориям")
+    @app_commands.checks.has_permissions(administrator=True)
     async def help_cmd(self, interaction: discord.Interaction) -> None:
         view = HelpView(self.HELP_PAGES, interaction.user.id)
         embed = view.build_embed("general")
         await interaction.response.send_message(embed=embed, view=view)
+
+    @help_cmd.error
+    async def help_cmd_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("❌ Команда `/help` доступна только администраторам.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ Произошла ошибка: {error}", ephemeral=True)
 
     # ─────────────────────────────────────────────────────────────────────────────
 
