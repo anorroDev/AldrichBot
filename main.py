@@ -4,7 +4,7 @@ import os
 import logging
 from dotenv import load_dotenv
 import aiosqlite
-
+from keep_alive import keep_alive
 
 load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
@@ -107,7 +107,7 @@ class MyBot(commands.Bot):
         logger.info('--------------------------------------------------------------')
 
 bot = MyBot()
-
+keep_alive()
 if __name__ == '__main__':
     if not TOKEN:
         raise RuntimeError('BOT_TOKEN is not set in the environment.')
