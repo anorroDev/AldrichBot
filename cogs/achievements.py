@@ -31,7 +31,7 @@ ACHIEVEMENTS = {
     "game": [
         {"id": "lvl_10", "name": "Закаленный в боях", "desc": "Достигните 10 уровня у костра.", "target": 10, "type": "level", "reward_text": "100 АП + Роль Перельный", "reward_ap": 100, "reward_role": 1480302681091477615},
         {"id": "lvl_50", "name": "Элден Лорд", "desc": "Достигните 50 уровня у костра.", "target": 50, "type": "level", "reward_text": "1000 АП + Роль Лорд Пепла", "reward_ap": 1000, "reward_role": 1480303132369092759},
-        {"id": "lvl_100", "name": "Истинный Владыка", "desc": "Достигните 100 уровня у костра.", "target": 100, "type": "level", "reward_text": "2500 АП + Роль Лорд Пепла", "reward_ap": 2500, "reward_role": 1480303132369092759},
+        {"id": "lvl_100", "name": "Истинный Владыка", "desc": "Достигните 100 уровня у костра.", "target": 100, "type": "level", "reward_text": "2500 АП + Роль", "reward_ap": 2500, "reward_role": 1480303132369092759},
         {"id": "souls_10000", "name": "Лорд Пепла", "desc": "Накопите 10 000 душ.", "target": 10000, "type": "souls", "reward_text": "250 АП", "reward_ap": 100},
         {"id": "souls_100000", "name": "Пожиратель Богов", "desc": "Накопите 100 000 душ.", "target": 100000, "type": "souls", "reward_text": "1500 АП + Роль", "reward_ap": 1500, "reward_role": 1480303511219732601}
     ],

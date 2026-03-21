@@ -9,24 +9,34 @@ SHOP_CATEGORIES = {
         "color": discord.Color.fuchsia(),
         "items": [
             {
-                "id": "cosmetic_role_1",
-                "name": "Эмиссар Пепла",
-                "emoji": "🎖️",
-                "price": 350,
-                "description": "Косметическая роль в профиле сервера.",
+                "id": "cosmetic_role_dota",
+                "name": "Самость",
+                "emoji": "👁",
+                "price": 1000,
+                "description": "Купол контроля, а не хаоса.",
                 "kind": "role",
-                "role_id": 1477601614171738193,
-                "available": False,
+                "role_id": 1485043604673003540,
+                "available": True,
             },
             {
-                "id": "cosmetic_role_2",
-                "name": "Хранитель Ночи",
-                "emoji": "🌙",
-                "price": 900,
-                "description": "Редкая постоянная роль для активных участников.",
+                "id": "cosmetic_role_minecraft",
+                "name": "Странник Края",
+                "emoji": "🌌",
+                "price": 1500,
+                "description": "Пережил взрывы криперов и заглянул в глаза дракону.",
                 "kind": "role",
-                "role_id": 1477601614171738193,
-                "available": False,
+                "role_id": 1485043711963562196,
+                "available": True,
+            },
+            {
+                "id": "cosmetic_role_dayz",
+                "name": "Тень Чернаруси",
+                "emoji": "🪖",
+                "price": 1500,
+                "description": "Тихая аура, после которой в лобби становится тише.",
+                "kind": "role",
+                "role_id": 1485043819254120960,
+                "available": True,
             },
         ],
     },
@@ -277,8 +287,9 @@ class Activity(commands.Cog):
             level_rows = await cursor.fetchall()
 
         level_text = ""
+        medals = ["🥇", "🥈", "🥉", "🏅", "🏅"]
         for index, row in enumerate(level_rows, start=1):
-            medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else "🏅"
+            medal = medals[index - 1] if index <= len(medals) else "🏅"
             level_text += f"{medal} <@{row[0]}> — **{row[1]}** уровень\n"
 
         if not level_text:
@@ -292,7 +303,7 @@ class Activity(commands.Cog):
 
         ap_text = ""
         for index, row in enumerate(ap_rows, start=1):
-            medal = "🥇" if index == 1 else "🥈" if index == 2 else "🥉" if index == 3 else "🏅"
+            medal = medals[index - 1] if index <= len(medals) else "🏅"
             ap_text += f"{medal} <@{row[0]}> — Текущие: `{row[1]}` (Всего: `{row[2]}`)\n"
 
         if not ap_text:
@@ -375,6 +386,14 @@ class Activity(commands.Cog):
         await self.bot.db.commit()
 
         await interaction.response.send_message(f"🏆 Администратор наградил {member.mention} Очками Активности в размере: `{amount}` АП!")
+
+    @give_activity.error
+    async def give_activity_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("❌ Эта команда доступна только администраторам!", ephemeral=True)
+        else:
+            print(f"[ОШИБКА В ВЫДАЧЕ АП]: {error}") 
+            await interaction.response.send_message(f"❌ Системная ошибка: `{error}`", ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
