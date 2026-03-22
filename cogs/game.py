@@ -32,9 +32,14 @@ ITEMS = {
     "swift_ring": {"name": "🔵 Кольцо Стремительности", "price": 2500, "type": "equippable", "desc": "Пассивное. Каждая надетая копия снижает шанс смерти на 5%."},
     "flask":      {"name": "🧪 Фляга Эстуса",           "price": 300,  "type": "consumable", "desc": "Восстанавливает вашу бодрость до максимума."},
     "war_scroll": {"name": "📜 Свиток Ярости",          "price": 1000,  "type": "consumable", "desc": "Примените перед охотой. Следующая успешная охота принесёт двойные души."},
+    "abyss_shard": {"name": "🪨 Осколок Бездны",         "price": 1400, "type": "consumable", "desc": "Примените перед охотой. Следующая охота даст +35% душ, но шанс смерти вырастет на 10%."},
 }
 
 RING_ITEM_KEYS = {"ring", "greed_ring", "swift_ring"}
+GIVE_ITEM_CHOICES = [
+    app_commands.Choice(name=item_data["name"], value=item_key)
+    for item_key, item_data in ITEMS.items()
+]
 
 async def get_profile_embed(bot, user: discord.Member):
     async with bot.db.execute(
@@ -97,6 +102,7 @@ _MERCHANT_BUTTON_ITEMS = {
     "btn_swift":  "swift_ring",
     "btn_flask":  "flask",
     "btn_scroll": "war_scroll",
+    "btn_abyss":  "abyss_shard",
 }
 
 class MerchantUI(discord.ui.View):
@@ -107,13 +113,16 @@ class MerchantUI(discord.ui.View):
         self.bot = cog.bot
         self.location_key = location_key
         self.farm_view = farm_view
-        # Автоматически синхронизировать метки кнопок с ценами из ITEMS
         for child in self.children:
-            item_key = _MERCHANT_BUTTON_ITEMS.get(child.callback.__name__)
-            if item_key and item_key in ITEMS:
-                item = ITEMS[item_key]
-                emoji_name = item["name"].split(" ", 1)[0]  # первый emoji из имени предмета
-                child.label = f"{emoji_name} {item['name'].split(' ', 1)[1].strip()} ({item['price']})"
+            try:
+                callback_name = child.callback.__name__
+                item_key = _MERCHANT_BUTTON_ITEMS.get(callback_name)
+                if item_key and item_key in ITEMS:
+                    item = ITEMS[item_key]
+                    emoji_name = item["name"].split(" ", 1)[0]  
+                    child.label = f"{emoji_name} {item['name'].split(' ', 1)[1].strip()} ({item['price']})"
+            except (AttributeError, TypeError):
+                pass
 
     async def buy_item(self, interaction, item_key):
         if interaction.user.id != self.user.id:
@@ -163,6 +172,9 @@ class MerchantUI(discord.ui.View):
     @discord.ui.button(label="📜 Свиток Ярости (1000)", style=discord.ButtonStyle.secondary, row=1)
     async def btn_scroll(self, i: discord.Interaction, b: discord.ui.Button): await self.buy_item(i, "war_scroll")
 
+    @discord.ui.button(label="🪨 Осколок Бездны (1400)", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_abyss(self, i: discord.Interaction, b: discord.ui.Button): await self.buy_item(i, "abyss_shard")
+
     @discord.ui.button(label="⚔️ Снова в бой", style=discord.ButtonStyle.primary, row=2)
     async def btn_hunt(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("Это не ваша игра!", ephemeral=True)
@@ -190,6 +202,8 @@ class InventoryButton(discord.ui.Button):
             await self._inv_view._use_flask(interaction)
         elif self._action == "use_scroll":
             await self._inv_view._use_scroll(interaction)
+        elif self._action == "use_abyss_shard":
+            await self._inv_view._use_abyss_shard(interaction)
         elif self._action == "toggle_auto_flask":
             await self._inv_view._toggle_auto_flask(interaction)
         elif self._action == "back":
@@ -251,13 +265,17 @@ class InventoryUI(discord.ui.View):
 
         has_flask = "flask" in items_dict
         has_scroll = "war_scroll" in items_dict
-        if has_flask or has_scroll:
+        has_abyss_shard = "abyss_shard" in items_dict
+        if has_flask or has_scroll or has_abyss_shard:
             if has_flask:
                 self.add_item(InventoryButton(self, "use_flask", None,
                     label="🧪 Выпить Флягу", style=discord.ButtonStyle.success, row=current_row))
             if has_scroll:
                 self.add_item(InventoryButton(self, "use_scroll", None,
                     label="📜 Применить Свиток", style=discord.ButtonStyle.success, row=current_row))
+            if has_abyss_shard:
+                self.add_item(InventoryButton(self, "use_abyss_shard", None,
+                    label="🪨 Применить Осколок", style=discord.ButtonStyle.success, row=current_row))
             current_row += 1
 
         self.add_item(InventoryButton(self, "toggle_auto_flask", None,
@@ -329,6 +347,23 @@ class InventoryUI(discord.ui.View):
         await self.bot.db.commit()
         embed = await self.build()
         await interaction.response.edit_message(content="🔥 Свиток Ярости активирован! Следующая успешная охота принесёт двойные души.", embed=embed, view=self)
+
+    async def _use_abyss_shard(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user.id:
+            return await interaction.response.send_message("Это не ваш инвентарь!", ephemeral=True)
+        items = await self.get_inventory_data()
+        shard_data = next((row for row in items if row[0] == 'abyss_shard'), None)
+        if not shard_data or shard_data[1] <= 0:
+            return await interaction.response.send_message("❌ У вас нет Осколка Бездны!", ephemeral=True)
+        async with self.bot.db.execute("SELECT abyss_shard_next_hunt FROM users WHERE id = ?", (self.user.id,)) as cursor:
+            shard_row = await cursor.fetchone()
+        if shard_row and shard_row[0]:
+            return await interaction.response.send_message("⚠️ Осколок Бездны уже активен! Идите на охоту.", ephemeral=True)
+        await self.bot.db.execute("UPDATE inventory SET amount = amount - 1 WHERE user_id = ? AND item_name = 'abyss_shard'", (self.user.id,))
+        await self.bot.db.execute("UPDATE users SET abyss_shard_next_hunt = 1 WHERE id = ?", (self.user.id,))
+        await self.bot.db.commit()
+        embed = await self.build()
+        await interaction.response.edit_message(content="🌌 Осколок Бездны активирован! Следующая охота: +35% душ и +10% к риску смерти.", embed=embed, view=self)
 
     async def _toggle_auto_flask(self, interaction: discord.Interaction):
         if interaction.user.id != self.user.id:
@@ -484,13 +519,13 @@ class FarmUI(discord.ui.View):
 
         loc_data = LOCATIONS[location_key]
         async with self.bot.db.execute(
-            "SELECT balance, level, lost_souls, energy, last_energy_update, successful_hunts, strength, vitality, luck, double_next_hunt "
+            "SELECT balance, level, lost_souls, energy, last_energy_update, successful_hunts, strength, vitality, luck, double_next_hunt, abyss_shard_next_hunt "
             "FROM users WHERE id = ?", (self.user.id,)
         ) as cursor:
             row = await cursor.fetchone()
 
         if not row: return
-        balance, level, lost_souls, energy, last_update, hunts, strength, vitality, luck, double_next_hunt = row
+        balance, level, lost_souls, energy, last_update, hunts, strength, vitality, luck, double_next_hunt, abyss_shard_next_hunt = row
         now = int(time.time())
 
         async with self.bot.db.execute("SELECT COALESCE(auto_use_flask, 0) FROM users WHERE id = ?", (self.user.id,)) as cursor:
@@ -542,6 +577,8 @@ class FarmUI(discord.ui.View):
                 auto_flask_text = "\n\n🧪 **Авто-фляга:** бодрость упала до 0, фляга использована автоматически."
 
         death_chance = max(5, loc_data["base_death"] - (level - 1) - (vitality * 0.5) - (swift_rings * 5))
+        if abyss_shard_next_hunt:
+            death_chance += 10
         roll = random.uniform(0, 100)
 
         embed = discord.Embed(color=discord.Color.dark_theme())
@@ -554,7 +591,10 @@ class FarmUI(discord.ui.View):
         if roll <= death_chance:
             if has_equipped_ring:
                 await self.bot.db.execute("UPDATE inventory SET amount = amount - 1, equipped = equipped - 1 WHERE user_id = ? AND item_name = 'ring'", (self.user.id,))
-                await self.bot.db.execute("UPDATE users SET energy = ?, last_energy_update = ? WHERE id = ?", (energy, last_update, self.user.id))
+                await self.bot.db.execute(
+                    "UPDATE users SET energy = ?, last_energy_update = ?, abyss_shard_next_hunt = 0 WHERE id = ?",
+                    (energy, last_update, self.user.id),
+                )
                 await self.bot.db.commit()
                 
                 embed.title = "💍 КОЛЬЦО РАСКОЛОЛОСЬ!"
@@ -563,7 +603,10 @@ class FarmUI(discord.ui.View):
                 await interaction.response.edit_message(embed=embed, view=HuntAgainUI(self.bot.get_cog('Game'), self.user, location_key, self))
             else:
                 new_lost_souls = balance
-                await self.bot.db.execute("UPDATE users SET balance = 0, lost_souls = ?, current_location = ?, energy = ?, last_energy_update = ? WHERE id = ?", (new_lost_souls, location_key, energy, last_update, self.user.id))
+                await self.bot.db.execute(
+                    "UPDATE users SET balance = 0, lost_souls = ?, current_location = ?, energy = ?, last_energy_update = ?, abyss_shard_next_hunt = 0 WHERE id = ?",
+                    (new_lost_souls, location_key, energy, last_update, self.user.id),
+                )
                 await self.bot.db.commit()
                 
                 embed.title = "☠️ ВЫ ПОГИБЛИ!"
@@ -582,6 +625,9 @@ class FarmUI(discord.ui.View):
             if double_next_hunt:
                 pure_reward *= 2
                 bonus_text += "\n\n🔥 **Свиток Ярости:** добыча удвоена!"
+            if abyss_shard_next_hunt:
+                pure_reward = int(pure_reward * 1.35)
+                bonus_text += "\n🌌 Осколок Бездны: +35% душ, +10% к риску смерти"
             if greed_rings > 0:
                 bonus_text += f"\n💛 Кольца Жадности (x{greed_rings}): +{greed_rings * 20}% душ"
 
@@ -597,7 +643,7 @@ class FarmUI(discord.ui.View):
             await self.bot.db.execute(
                 "UPDATE users SET balance = balance + ?, lost_souls = 0, current_location = ?, "
                 "total_souls_farmed = total_souls_farmed + ?, energy = ?, last_energy_update = ?, "
-                "successful_hunts = ?, double_next_hunt = 0 WHERE id = ?",
+                "successful_hunts = ?, double_next_hunt = 0, abyss_shard_next_hunt = 0 WHERE id = ?",
                 (reward, location_key, pure_reward, energy, last_update, new_hunts, self.user.id)
             )
             await self.bot.db.commit()
@@ -793,16 +839,13 @@ class Game(commands.Cog):
 
     @app_commands.command(name="give_item", description="🛡️ Выдать предмет игроку")
     @app_commands.checks.has_permissions(administrator=True)
-    @app_commands.choices(item_name=[
-        app_commands.Choice(name="💍 Кольцо Жертвенности", value="ring"),
-        app_commands.Choice(name="💛 Кольцо Жадности", value="greed_ring"),
-        app_commands.Choice(name="🔵 Кольцо Стремительности", value="swift_ring"),
-        app_commands.Choice(name="🧪 Фляга Бодрости", value="flask"),
-        app_commands.Choice(name="📜 Свиток Ярости", value="war_scroll"),
-    ])
+    @app_commands.choices(item_name=GIVE_ITEM_CHOICES)
     async def give_item(self, interaction: discord.Interaction, member: discord.Member, item_name: app_commands.Choice[str], amount: int):
         if amount < 1:
             return await interaction.response.send_message("❌ Количество должно быть не меньше 1.", ephemeral=True)
+
+        if item_name.value not in ITEMS:
+            return await interaction.response.send_message("❌ Неизвестный предмет.", ephemeral=True)
 
         if item_name.value in RING_ITEM_KEYS:
             async with self.bot.db.execute(

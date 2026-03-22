@@ -82,6 +82,7 @@ class MyBot(commands.Bot):
         await ensure_column(self.db, 'inventory', 'equipped', 'INTEGER DEFAULT 0')
         await ensure_column(self.db, 'users', 'double_next_hunt', 'INTEGER DEFAULT 0')
         await ensure_column(self.db, 'users', 'auto_use_flask', 'INTEGER DEFAULT 0')
+        await ensure_column(self.db, 'users', 'abyss_shard_next_hunt', 'INTEGER DEFAULT 0')
 
         await self.db.commit()
         logger.info('Database connected and tables ensured.')
