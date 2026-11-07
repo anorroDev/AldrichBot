@@ -108,7 +108,10 @@ class MyBot(commands.Bot):
         logger.info('--------------------------------------------------------------')
 
 bot = MyBot()
-keep_alive()
+# Веб-заглушка нужна только бесплатному Render (будить его через UptimeRobot).
+# На своём сервере бот и так работает 24/7 — там она не запускается.
+if os.getenv('RENDER'):
+    keep_alive()
 if __name__ == '__main__':
     if not TOKEN:
         raise RuntimeError('BOT_TOKEN is not set in the environment.')
